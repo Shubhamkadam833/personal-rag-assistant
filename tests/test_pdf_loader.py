@@ -11,13 +11,15 @@ from rag.pdf_loader import load_pdf
 def _make_pdf(text_per_page: list[str]) -> Path:
     """Create a temporary PDF with given text on each page."""
     tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    tmp_path = Path(tmp.name)
+    tmp.close()  # close file handle so PyMuPDF can write to it on Windows
     doc = fitz.open()
     for text in text_per_page:
         page = doc.new_page()
         page.insert_text((50, 100), text)
-    doc.save(tmp.name)
+    doc.save(str(tmp_path))
     doc.close()
-    return Path(tmp.name)
+    return tmp_path
 
 
 def test_single_page_pdf():
