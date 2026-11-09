@@ -81,7 +81,15 @@ Question: {question}"""
         messages=[{"role": "user", "content": user_message}],
     )
 
-    answer_text = response.content[0].text
+    # Find the text block (thinking blocks may come first on newer models)
+    answer_text = ""
+    for block in response.content:
+        if getattr(block, "type", None) == "text":
+            answer_text = block.text
+            break
+
+    if not answer_text:
+        answer_text = NO_ANSWER
 
     # Collect unique sources from the chunks provided
     seen = set()

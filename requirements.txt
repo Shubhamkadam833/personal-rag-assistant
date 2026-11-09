@@ -1,6 +1,6 @@
 streamlit==1.40.2
 pymupdf==1.24.14
 sentence-transformers==3.3.1
-chromadb==0.3.29
+numpy>=1.26.0
 anthropic==0.40.0
 python-dotenv==1.0.1
