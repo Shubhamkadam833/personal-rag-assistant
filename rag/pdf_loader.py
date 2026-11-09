@@ -1,0 +1,46 @@
+"""
+pdf_loader.py — extracts text from PDF files page by page.
+
+HOW IT WORKS:
+  PyMuPDF opens the PDF, loops through every page, and pulls out the text.
+  We keep track of the document name and page number so we can cite sources later.
+
+WHAT IT RETURNS:
+  A list of dicts, one per page:
+  [
+    {"doc_name": "report.pdf", "page": 1, "text": "...page content..."},
+    ...
+  ]
+"""
+
+from pathlib import Path
+import fitz  # PyMuPDF
+
+
+def load_pdf(file_path: str | Path) -> list[dict]:
+    """Extract text from every page of a PDF. Returns list of page dicts."""
+    path = Path(file_path)
+    doc_name = path.name
+    pages = []
+
+    try:
+        pdf = fitz.open(str(path))
+    except Exception as e:
+        raise ValueError(f"Could not open '{doc_name}': {e}")
+
+    for page_num in range(len(pdf)):
+        page = pdf[page_num]
+        text = page.get_text().strip()
+        if text:
+            pages.append({
+                "doc_name": doc_name,
+                "page": page_num + 1,  # 1-indexed for display
+                "text": text,
+            })
+
+    pdf.close()
+
+    if not pages:
+        raise ValueError(f"'{doc_name}' contains no extractable text. It may be a scanned image PDF.")
+
+    return pages
