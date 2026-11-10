@@ -6,8 +6,14 @@ WHY WE CHUNK:
   Also, smaller focused chunks give better search results than whole pages.
 
 HOW OVERLAP WORKS:
-  If chunk_size=500 and overlap=50, chunk 2 starts 450 words into chunk 1.
+  If chunk_size=150 and overlap=30, chunk 2 starts 120 words into chunk 1.
   This prevents an answer from being split across two chunks.
+
+CHOOSING chunk_size:
+  Sizes are counted in WORDS, not characters. Chunks must be small enough that
+  retrieving the top few gives a focused context — if a document produces fewer
+  chunks than top_k, every search returns the whole document and the semantic
+  search does nothing.
 
 WHAT IT RETURNS:
   A list of chunk dicts — each chunk carries the source doc name and page number.
@@ -16,8 +22,8 @@ WHAT IT RETURNS:
 
 def chunk_pages(
     pages: list[dict],
-    chunk_size: int = 500,
-    overlap: int = 50,
+    chunk_size: int = 150,
+    overlap: int = 30,
 ) -> list[dict]:
     """Split page text into overlapping word-level chunks."""
     chunks = []

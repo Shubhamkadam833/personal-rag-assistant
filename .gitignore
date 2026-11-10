@@ -13,6 +13,9 @@ venv/
 data/uploads/
 data/chroma_db/
 
+# Editor
+.vscode/
+
 # OS
 .DS_Store
 Thumbs.db
