@@ -2,7 +2,7 @@
 app.py — the main Streamlit application for the Personal AI Document Assistant.
 
 WHAT THIS APP DOES:
-  1. Upload PDFs → extract text → split into chunks → embed → store in ChromaDB
+  1. Upload PDFs → extract text → split into chunks → embed → store vectors on disk
   2. User asks a question → find matching chunks → send to Claude → show answer + sources
 
 RUN WITH:
@@ -22,9 +22,23 @@ from rag.embeddings import embed_texts
 from rag import vector_store
 from rag.retriever import retrieve
 from rag.answer_generator import generate_answer
+from security.pdf_validator import (
+    PDFValidationError,
+    safe_display_name,
+    safe_storage_path,
+    validate_pdf_bytes,
+)
 
 UPLOAD_DIR = Path(__file__).parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def render_answer(text: str) -> str:
+    """
+    Escape '$' before display. Streamlit's markdown reads $...$ as LaTeX math,
+    which silently eats the text between two dollar amounts.
+    """
+    return text.replace("$", r"\$")
 
 st.set_page_config(
     page_title="Personal AI Document Assistant",
@@ -48,33 +62,50 @@ with st.sidebar:
 
     if uploaded_files:
         for uf in uploaded_files:
-            save_path = UPLOAD_DIR / uf.name
-            save_path.write_bytes(uf.read())
+            display_name = safe_display_name(uf.name)
 
-            with st.spinner(f"Processing {uf.name}…"):
+            # Validate the bytes BEFORE writing anything, so a rejected upload
+            # never lands in the uploads directory.
+            try:
+                data = uf.read()
+                validate_pdf_bytes(data, uf.name)
+            except PDFValidationError as e:
+                st.error(f"❌ {e}")
+                continue
+
+            # Stored under a random name: a hostile filename cannot escape the
+            # uploads directory or overwrite an existing file.
+            save_path = safe_storage_path(UPLOAD_DIR)
+            save_path.write_bytes(data)
+
+            with st.spinner(f"Processing {display_name}…"):
                 try:
                     # 1. Extract text page by page
-                    pages = load_pdf(save_path)
+                    pages = load_pdf(save_path, doc_name=display_name)
 
                     # 2. Split into smaller chunks
-                    chunks = chunk_pages(pages, chunk_size=500, overlap=50)
+                    chunks = chunk_pages(pages, chunk_size=150, overlap=30)
 
                     # 3. Convert each chunk to an embedding vector
                     texts = [c["text"] for c in chunks]
                     embeddings = embed_texts(texts)
 
-                    # 4. Store in ChromaDB (duplicates are skipped automatically)
+                    # 4. Store vectors on disk (duplicates are skipped automatically)
                     new_count = vector_store.add_chunks(chunks, embeddings)
 
                     if new_count > 0:
-                        st.success(f"✅ {uf.name} — {new_count} chunks added")
+                        st.success(f"✅ {display_name} — {new_count} chunks added")
                     else:
-                        st.info(f"ℹ️ {uf.name} — already in the database, skipped")
+                        st.info(f"ℹ️ {display_name} — already in the database, skipped")
 
                 except ValueError as e:
-                    st.error(f"❌ {uf.name}: {e}")
-                except Exception as e:
-                    st.error(f"❌ Unexpected error processing {uf.name}: {e}")
+                    save_path.unlink(missing_ok=True)
+                    st.error(f"❌ {display_name}: {e}")
+                except Exception:
+                    # Deliberately generic: exception text can carry internal
+                    # file paths, which should not reach the browser.
+                    save_path.unlink(missing_ok=True)
+                    st.error(f"❌ Could not process {display_name}.")
 
     st.divider()
 
@@ -95,6 +126,12 @@ with st.sidebar:
     st.divider()
     st.caption(f"Total chunks stored: {vector_store.total_chunks()}")
 
+    if vector_store.total_chunks() > 0:
+        if st.button("Rebuild index", help="Clear all stored chunks, then re-upload your PDFs."):
+            cleared = vector_store.clear_all()
+            st.success(f"Index cleared ({cleared} chunks). Re-upload your PDFs.")
+            st.rerun()
+
 # ── Main Area: Chat Interface ────────────────────────────────────────────────
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -102,7 +139,7 @@ if "messages" not in st.session_state:
 # Display chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        st.markdown(render_answer(msg["content"]))
         if msg.get("sources"):
             with st.expander("📌 Sources"):
                 for s in msg["sources"]:
@@ -113,18 +150,22 @@ if question := st.chat_input("Ask a question about your documents…"):
     if vector_store.total_chunks() == 0:
         st.warning("Please upload at least one PDF document first.")
     else:
+        # Capture the conversation so far BEFORE adding the current question,
+        # so the question is not part of its own history.
+        history = list(st.session_state.messages)
+
         # Show user message
         st.session_state.messages.append({"role": "user", "content": question})
         with st.chat_message("user"):
-            st.markdown(question)
+            st.markdown(render_answer(question))
 
         # Generate answer
         with st.chat_message("assistant"):
             with st.spinner("Searching documents and generating answer…"):
-                chunks = retrieve(question, top_k=5)
-                result = generate_answer(question, chunks)
+                chunks = retrieve(question, top_k=5, history=history)
+                result = generate_answer(question, chunks, history=history)
 
-            st.markdown(result["answer"])
+            st.markdown(render_answer(result["answer"]))
 
             if result["sources"]:
                 with st.expander("📌 Sources"):

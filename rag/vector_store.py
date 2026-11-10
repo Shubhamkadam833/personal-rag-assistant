@@ -131,3 +131,20 @@ def remove_document(doc_name: str) -> int:
 def total_chunks() -> int:
     _, metadata = _load()
     return len(metadata)
+
+
+def clear_all() -> int:
+    """
+    Delete the entire index. Returns the number of chunks removed.
+
+    Needed when chunking settings change: chunk hashes include the chunk text,
+    so re-uploading a document under a new chunk_size stores a second copy at
+    the new size instead of replacing the old one.
+    """
+    _, metadata = _load()
+    removed = len(metadata)
+
+    EMBEDDINGS_FILE.unlink(missing_ok=True)
+    METADATA_FILE.unlink(missing_ok=True)
+
+    return removed

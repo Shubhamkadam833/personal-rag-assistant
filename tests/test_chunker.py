@@ -39,3 +39,11 @@ def test_empty_pages_skipped():
     pages = [{"doc_name": "t.pdf", "page": 1, "text": "   "}]
     chunks = chunk_pages(pages)
     assert chunks == []
+
+
+def test_default_chunk_size_splits_a_dense_page():
+    # Guards the retrieval bug: at the old 500-word default a page like this
+    # became a single chunk, so top-k search had nothing to choose between.
+    pages = [{"doc_name": "t.pdf", "page": 1, "text": " ".join(f"w{i}" for i in range(600))}]
+    chunks = chunk_pages(pages)
+    assert len(chunks) >= 4, "Default chunk size should split a 600-word page several ways"
