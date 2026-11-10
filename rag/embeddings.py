@@ -13,6 +13,8 @@ MODEL USED:
 
 from sentence_transformers import SentenceTransformer
 
+MODEL_NAME = "all-MiniLM-L6-v2"
+
 # Module-level singleton so we only load the model once
 _model: SentenceTransformer | None = None
 
@@ -20,7 +22,7 @@ _model: SentenceTransformer | None = None
 def get_model() -> SentenceTransformer:
     global _model
     if _model is None:
-        _model = SentenceTransformer("all-MiniLM-L6-v2")
+        _model = SentenceTransformer(MODEL_NAME)
     return _model
 
 
