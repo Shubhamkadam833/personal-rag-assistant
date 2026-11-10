@@ -17,10 +17,16 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 
-def load_pdf(file_path: str | Path) -> list[dict]:
-    """Extract text from every page of a PDF. Returns list of page dicts."""
+def load_pdf(file_path: str | Path, doc_name: str | None = None) -> list[dict]:
+    """
+    Extract text from every page of a PDF. Returns list of page dicts.
+
+    `doc_name` overrides the name used in citations. Uploads are stored under a
+    random filename for safety, so the original name has to be passed in or
+    sources would cite meaningless hex strings.
+    """
     path = Path(file_path)
-    doc_name = path.name
+    doc_name = doc_name or path.name
     pages = []
 
     try:

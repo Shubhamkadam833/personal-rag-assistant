@@ -22,6 +22,12 @@ from rag.embeddings import embed_texts
 from rag import vector_store
 from rag.retriever import retrieve
 from rag.answer_generator import generate_answer
+from security.pdf_validator import (
+    PDFValidationError,
+    safe_display_name,
+    safe_storage_path,
+    validate_pdf_bytes,
+)
 
 UPLOAD_DIR = Path(__file__).parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -56,13 +62,26 @@ with st.sidebar:
 
     if uploaded_files:
         for uf in uploaded_files:
-            save_path = UPLOAD_DIR / uf.name
-            save_path.write_bytes(uf.read())
+            display_name = safe_display_name(uf.name)
 
-            with st.spinner(f"Processing {uf.name}…"):
+            # Validate the bytes BEFORE writing anything, so a rejected upload
+            # never lands in the uploads directory.
+            try:
+                data = uf.read()
+                validate_pdf_bytes(data, uf.name)
+            except PDFValidationError as e:
+                st.error(f"❌ {e}")
+                continue
+
+            # Stored under a random name: a hostile filename cannot escape the
+            # uploads directory or overwrite an existing file.
+            save_path = safe_storage_path(UPLOAD_DIR)
+            save_path.write_bytes(data)
+
+            with st.spinner(f"Processing {display_name}…"):
                 try:
                     # 1. Extract text page by page
-                    pages = load_pdf(save_path)
+                    pages = load_pdf(save_path, doc_name=display_name)
 
                     # 2. Split into smaller chunks
                     chunks = chunk_pages(pages, chunk_size=150, overlap=30)
@@ -75,14 +94,18 @@ with st.sidebar:
                     new_count = vector_store.add_chunks(chunks, embeddings)
 
                     if new_count > 0:
-                        st.success(f"✅ {uf.name} — {new_count} chunks added")
+                        st.success(f"✅ {display_name} — {new_count} chunks added")
                     else:
-                        st.info(f"ℹ️ {uf.name} — already in the database, skipped")
+                        st.info(f"ℹ️ {display_name} — already in the database, skipped")
 
                 except ValueError as e:
-                    st.error(f"❌ {uf.name}: {e}")
-                except Exception as e:
-                    st.error(f"❌ Unexpected error processing {uf.name}: {e}")
+                    save_path.unlink(missing_ok=True)
+                    st.error(f"❌ {display_name}: {e}")
+                except Exception:
+                    # Deliberately generic: exception text can carry internal
+                    # file paths, which should not reach the browser.
+                    save_path.unlink(missing_ok=True)
+                    st.error(f"❌ Could not process {display_name}.")
 
     st.divider()
 

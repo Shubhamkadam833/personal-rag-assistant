@@ -1,0 +1,22 @@
+# Local-only server settings.
+#
+# WHY address = "127.0.0.1":
+#   By default Streamlit listens on every network interface, so the app — and
+#   every document loaded into it — is reachable by anything else on the same
+#   Wi-Fi or office network. Binding to the loopback address means only this
+#   machine can connect.
+#
+# WHY maxUploadSize = 10:
+#   Streamlit's default is 200 MB. The PDF validator rejects anything over
+#   10 MB anyway; setting it here stops a large file being buffered into
+#   memory before the validator ever sees it.
+
+[server]
+address = "127.0.0.1"
+maxUploadSize = 10
+enableCORS = true
+enableXsrfProtection = true
+enableStaticServing = false
+
+[browser]
+gatherUsageStats = false
