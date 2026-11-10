@@ -15,9 +15,12 @@ API KEY:
 """
 
 import os
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 import anthropic
+
+from security.prompt_guard import redact_if_unsafe
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -39,7 +42,44 @@ Rules:
 6. Earlier messages are provided so you can understand what a follow-up question
    refers to. They are NOT a source of facts — every fact in your answer must come
    from the document excerpts in the latest message, even if you stated it earlier.
+7. After your answer, on its own final line, write exactly:
+   USED_EXCERPTS: <comma-separated excerpt numbers you actually drew facts from>
+   or USED_EXCERPTS: none if you could not answer from the excerpts.
+   List ONLY excerpts you actually used — not every excerpt you were given.
 """
+
+_USED_EXCERPTS_RE = re.compile(r"\n?USED_EXCERPTS:\s*(.*)\s*$", re.IGNORECASE)
+
+
+def extract_used_excerpts(raw_text: str, excerpt_count: int) -> tuple[str, list[int]]:
+    """
+    Split the USED_EXCERPTS marker off a raw model response.
+
+    Returns (clean_answer_text, used_indices) where used_indices are 1-based
+    excerpt numbers, validated to be within range. If the marker is missing,
+    malformed, or says "none", used_indices is [] — callers must not fall
+    back to treating every retrieved chunk as a source. Citations should
+    reflect what the model says it used, not what it was merely given.
+    """
+    match = _USED_EXCERPTS_RE.search(raw_text)
+    if not match:
+        return raw_text, []
+
+    clean_text = raw_text[: match.start()].rstrip()
+    marker_value = match.group(1).strip().lower()
+
+    if marker_value in ("", "none"):
+        return clean_text, []
+
+    used_indices = []
+    for part in marker_value.split(","):
+        part = part.strip()
+        if part.isdigit():
+            n = int(part)
+            if 1 <= n <= excerpt_count:
+                used_indices.append(n)
+
+    return clean_text, used_indices
 
 
 def trim_history(history: list[dict] | None, max_turns: int = MAX_HISTORY_TURNS) -> list[dict]:
@@ -113,22 +153,35 @@ Question: {question}"""
     )
 
     # Find the text block (thinking blocks may come first on newer models)
-    answer_text = ""
+    raw_text = ""
     for block in response.content:
         if getattr(block, "type", None) == "text":
-            answer_text = block.text
+            raw_text = block.text
             break
 
-    if not answer_text:
-        answer_text = NO_ANSWER
+    if not raw_text:
+        answer_text, used_indices = NO_ANSWER, []
+    else:
+        answer_text, used_indices = extract_used_excerpts(raw_text, len(retrieved_chunks))
 
-    # Collect unique sources from the chunks provided
-    seen = set()
-    sources = []
-    for chunk in retrieved_chunks:
-        key = (chunk["doc_name"], chunk["page"])
-        if key not in seen:
-            seen.add(key)
-            sources.append({"doc_name": chunk["doc_name"], "page": chunk["page"]})
+    # Never show the model's raw text if it leaked something that looks like
+    # an API key — checked here, independent of anything the prompt asked for.
+    answer_text = redact_if_unsafe(answer_text)
+
+    # Sources are built ONLY from excerpts the model reported using — not from
+    # everything that was retrieved. A failed answer (or a missing/malformed
+    # marker) gets no sources: citing a chunk "supports" an answer that was
+    # never actually given from it is exactly what this is meant to prevent.
+    if answer_text.strip() == NO_ANSWER or not used_indices:
+        sources = []
+    else:
+        seen = set()
+        sources = []
+        for i in used_indices:
+            chunk = retrieved_chunks[i - 1]
+            key = (chunk["doc_name"], chunk["page"])
+            if key not in seen:
+                seen.add(key)
+                sources.append({"doc_name": chunk["doc_name"], "page": chunk["page"]})
 
     return {"answer": answer_text, "sources": sources}

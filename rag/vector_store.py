@@ -10,7 +10,10 @@ HOW DATA IS STORED (on disk):
   data/chroma_db/metadata.json   — list of {doc_name, page, text} for each vector
 
 DUPLICATE PREVENTION:
-  Each chunk gets a hash from doc_name + page + text. Existing hashes are skipped.
+  Each chunk gets a SHA-256 hash from doc_name + page + text. Existing hashes
+  are skipped. This catches a chunk being re-added within one document; whole
+  -document duplicate detection (hashing the full uploaded file) lives in
+  rag/document_registry.py, checked before a file is ever parsed.
 
 PERSISTENCE:
   Data is saved to disk after every add/remove, so it survives app restarts.
@@ -43,13 +46,19 @@ def _save(embeddings: np.ndarray, metadata: list[dict]) -> None:
 
 def _chunk_hash(doc_name: str, page: int, text: str) -> str:
     raw = f"{doc_name}::page{page}::{text[:100]}"
-    return hashlib.md5(raw.encode()).hexdigest()
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def add_chunks(chunks: list[dict], embeddings: list[list[float]]) -> int:
     """
     Store chunks and their embeddings.
     Returns the number of NEW chunks added (duplicates are skipped).
+
+    Each chunk dict may carry a "doc_id" key (the owning document's registry
+    ID — see rag/document_registry.py). It is persisted as-is so retrieval can
+    later look up that document's privacy level. Chunks from before doc_id
+    existed simply don't have the key; that is the legacy case retriever.py
+    treats as unclassified.
     """
     existing_vecs, existing_meta = _load()
     existing_hashes = {m["hash"] for m in existing_meta}
@@ -62,6 +71,7 @@ def add_chunks(chunks: list[dict], embeddings: list[list[float]]) -> int:
             new_vecs.append(vec)
             new_meta.append({
                 "hash": h,
+                "doc_id": chunk.get("doc_id"),
                 "doc_name": chunk["doc_name"],
                 "page": chunk["page"],
                 "text": chunk["text"],
@@ -101,6 +111,7 @@ def search(query_embedding: list[float], top_k: int = 5) -> list[dict]:
         m = metadata[idx]
         results.append({
             "text": m["text"],
+            "doc_id": m.get("doc_id"),
             "doc_name": m["doc_name"],
             "page": m["page"],
             "distance": float(1 - similarities[idx]),
@@ -108,16 +119,31 @@ def search(query_embedding: list[float], top_k: int = 5) -> list[dict]:
     return results
 
 
-def list_documents() -> list[str]:
-    """Return unique document names currently stored."""
+def list_documents() -> list[dict]:
+    """
+    Return one entry per unique document currently stored, as
+    {"doc_id": ..., "doc_name": ...}. doc_id is None for legacy chunks stored
+    before document IDs existed.
+    """
     _, metadata = _load()
-    return sorted(set(m["doc_name"] for m in metadata))
+    seen = {}
+    for m in metadata:
+        key = (m.get("doc_id"), m["doc_name"])
+        seen.setdefault(key, {"doc_id": m.get("doc_id"), "doc_name": m["doc_name"]})
+    return sorted(seen.values(), key=lambda d: d["doc_name"])
 
 
-def remove_document(doc_name: str) -> int:
-    """Delete all chunks belonging to a document. Returns count deleted."""
+def remove_document(doc_id: str) -> int:
+    """
+    Delete all chunks belonging to the document with this doc_id.
+    Returns the count of chunks deleted.
+
+    Keyed by doc_id, not doc_name: two different documents could share a
+    display name, and before doc_id existed, deletion-by-name had no way to
+    find the matching raw file on disk at all (see document_registry.py).
+    """
     embeddings, metadata = _load()
-    keep_indices = [i for i, m in enumerate(metadata) if m["doc_name"] != doc_name]
+    keep_indices = [i for i, m in enumerate(metadata) if m.get("doc_id") != doc_id]
     removed = len(metadata) - len(keep_indices)
 
     if removed > 0:
