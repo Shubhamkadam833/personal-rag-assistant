@@ -13,8 +13,34 @@ venv/
 data/uploads/
 data/chroma_db/
 
-# Editor
+# Editors
 .vscode/
+.idea/
+*.swp
+
+# AI assistant settings, rules and local context — keep the repo tool-agnostic
+.claude/
+CLAUDE.md
+.cursor/
+.cursorrules
+.cursorignore
+.codex/
+AGENTS.md
+.aider*
+.windsurf/
+.windsurfrules
+.continue/
+.cline*
+.roo/
+.gemini/
+GEMINI.md
+.github/copilot-instructions.md
+
+# Scratch notes and local working files
+notes/
+scratch/
+NOTES.md
+*.local.md
 
 # OS
 .DS_Store
