@@ -10,18 +10,24 @@ HOW DATA IS STORED (on disk):
   data/chroma_db/metadata.json   — list of {doc_name, page, text} for each vector
 
 DUPLICATE PREVENTION:
-  Each chunk gets a SHA-256 hash from doc_name + page + text. Existing hashes
-  are skipped. This catches a chunk being re-added within one document; whole
-  -document duplicate detection (hashing the full uploaded file) lives in
-  rag/document_registry.py, checked before a file is ever parsed.
+  Each chunk gets a SHA-256 hash of its document ID + page + position + full
+  text; existing hashes are skipped, so adding the same document twice stores
+  it once. Using the document ID (not the file name) keeps a new version of a
+  same-named file separate from the old one. Whole-file duplicates are caught
+  earlier, by the file hash in rag/document_registry.py.
 
 PERSISTENCE:
   Data is saved to disk after every add/remove, so it survives app restarts.
+  Each file is written to a temp file and swapped in whole. Unreadable or
+  out-of-sync files raise IndexDamagedError instead of crashing the caller.
 """
 
 import json
 import hashlib
+import os
 from pathlib import Path
+from typing import BinaryIO, Callable
+
 import numpy as np
 
 STORE_DIR = Path(__file__).parent.parent / "data" / "chroma_db"
@@ -29,23 +35,42 @@ EMBEDDINGS_FILE = STORE_DIR / "embeddings.npy"
 METADATA_FILE = STORE_DIR / "metadata.json"
 
 
+class IndexDamagedError(RuntimeError):
+    """Index files exist but can't be trusted (unreadable, or out of sync)."""
+
+
+def write_atomic(path: Path, write: Callable[[BinaryIO], object]) -> None:
+    """Write to a temp file, then swap it in, so a crash leaves the old or the new file, never half of one."""
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "wb") as f:
+        write(f)
+    os.replace(tmp, path)
+
+
 def _load() -> tuple[np.ndarray, list[dict]]:
-    """Load embeddings matrix and metadata list from disk."""
-    if EMBEDDINGS_FILE.exists() and METADATA_FILE.exists():
+    """Load embeddings matrix and metadata list from disk. Raises IndexDamagedError."""
+    if not EMBEDDINGS_FILE.exists() and not METADATA_FILE.exists():
+        return np.empty((0, 384), dtype=np.float32), []
+    try:
         embeddings = np.load(str(EMBEDDINGS_FILE))
         metadata = json.loads(METADATA_FILE.read_text(encoding="utf-8"))
-        return embeddings, metadata
-    return np.empty((0, 384), dtype=np.float32), []
+    except (OSError, ValueError, EOFError) as e:  # missing half, cut short, not JSON
+        raise IndexDamagedError("the index files can't be read") from e
+    if embeddings.ndim != 2 or embeddings.shape[0] != len(metadata):
+        raise IndexDamagedError(f"{len(embeddings)} vectors but {len(metadata)} metadata entries")
+    return embeddings, metadata
 
 
 def _save(embeddings: np.ndarray, metadata: list[dict]) -> None:
     STORE_DIR.mkdir(parents=True, exist_ok=True)
-    np.save(str(EMBEDDINGS_FILE), embeddings)
-    METADATA_FILE.write_text(json.dumps(metadata, ensure_ascii=False), encoding="utf-8")
+    # Each file is swapped in whole. The two can't change in one step, so a crash
+    # between them is still possible; _load's count check reports it as damaged.
+    write_atomic(EMBEDDINGS_FILE, lambda f: np.save(f, embeddings))
+    write_atomic(METADATA_FILE, lambda f: f.write(json.dumps(metadata, ensure_ascii=False).encode("utf-8")))
 
 
-def _chunk_hash(doc_name: str, page: int, text: str) -> str:
-    raw = f"{doc_name}::page{page}::{text[:100]}"
+def _chunk_hash(doc_id: str | None, page: int, position: int, text: str) -> str:
+    raw = f"{doc_id}::page{page}::pos{position}::{text}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -64,8 +89,8 @@ def add_chunks(chunks: list[dict], embeddings: list[list[float]]) -> int:
     existing_hashes = {m["hash"] for m in existing_meta}
 
     new_vecs, new_meta = [], []
-    for chunk, vec in zip(chunks, embeddings):
-        h = _chunk_hash(chunk["doc_name"], chunk["page"], chunk["text"])
+    for position, (chunk, vec) in enumerate(zip(chunks, embeddings)):
+        h = _chunk_hash(chunk.get("doc_id"), chunk["page"], position, chunk["text"])
         if h not in existing_hashes:
             existing_hashes.add(h)
             new_vecs.append(vec)
@@ -169,14 +194,16 @@ def total_chunks() -> int:
 
 def clear_all() -> int:
     """
-    Delete the entire index. Returns the number of chunks removed.
+    Delete the entire index, including a damaged one. Returns the number of
+    chunks removed (0 if the files couldn't be read).
 
-    Needed when chunking settings change: chunk hashes include the chunk text,
-    so re-uploading a document under a new chunk_size stores a second copy at
-    the new size instead of replacing the old one.
+    Needed when chunking settings change (a document re-indexed at a new
+    chunk size would otherwise be stored twice) and to recover from damage.
     """
-    _, metadata = _load()
-    removed = len(metadata)
+    try:
+        removed = len(_load()[1])
+    except IndexDamagedError:
+        removed = 0
 
     EMBEDDINGS_FILE.unlink(missing_ok=True)
     METADATA_FILE.unlink(missing_ok=True)

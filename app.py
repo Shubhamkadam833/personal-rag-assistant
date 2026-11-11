@@ -69,9 +69,36 @@ st.set_page_config(
 st.title("📄 Personal AI Document Assistant")
 st.caption("Upload PDFs, ask questions, get answers with sources.")
 
+def _rebuild_index() -> int:
+    """Clear chunks, the registry, and the uploaded files the registry tracks. Works on a damaged index."""
+    try:
+        for record in document_registry.list_all().values():
+            (UPLOAD_DIR / Path(record["stored_path"]).name).unlink(missing_ok=True)
+    except vector_store.IndexDamagedError:
+        pass  # registry unreadable: we can't tell which uploads were ours, so leave them all
+    cleared = vector_store.clear_all()
+    document_registry.clear_all()
+    return cleared
+
+
 # ── Sidebar: Upload + Document Management ───────────────────────────────────
 with st.sidebar:
     st.header("📂 Documents")
+
+    # A crash mid-save can leave the index unreadable. Offer a way out instead
+    # of a traceback; nothing else on the page can work until it's rebuilt.
+    try:
+        vector_store.total_chunks()
+        document_registry.list_all()
+    except vector_store.IndexDamagedError:
+        st.error(
+            "The search index is damaged, probably by an interrupted save. "
+            "Click **Rebuild index**, then upload your PDFs again."
+        )
+        if st.button("Rebuild index", key="rebuild_damaged"):
+            _rebuild_index()
+            st.rerun()
+        st.stop()
 
     uploaded_files = st.file_uploader(
         "Upload PDF files",
@@ -93,9 +120,8 @@ with st.sidebar:
             # Whole-document duplicate detection: identical bytes mean this
             # is the same file, full stop — skip before any parsing, chunking
             # or embedding work happens at all.
-            existing_doc_id = document_registry.find_by_hash(doc_id)
-            if existing_doc_id:
-                existing = document_registry.get(existing_doc_id)
+            if document_registry.is_indexed(doc_id):
+                existing = document_registry.get(doc_id)
                 st.info(
                     f"ℹ️ {display_name} is identical to an already-loaded "
                     f"document ('{existing['display_name']}') — skipped."
@@ -223,13 +249,9 @@ with st.sidebar:
     st.divider()
     st.caption(f"Total chunks stored: {vector_store.total_chunks()}")
 
-    if vector_store.total_chunks() > 0:
+    if vector_store.total_chunks() > 0 or document_registry.list_all():
         if st.button("Rebuild index", help="Clear all stored chunks, then re-upload your PDFs."):
-            cleared = vector_store.clear_all()
-            # Both stores must be cleared together: a surviving registry entry
-            # would make find_by_hash() reject a re-upload of the same file as
-            # "already loaded" even though its chunks are gone.
-            document_registry.clear_all()
+            cleared = _rebuild_index()
             st.success(f"Index cleared ({cleared} chunks). Re-upload your PDFs.")
             st.rerun()
 
