@@ -22,7 +22,7 @@ from rag.embeddings import embed_texts
 from rag import vector_store
 from rag import document_registry
 from rag.retriever import retrieve
-from rag.answer_generator import generate_answer
+from rag.answer_generator import MAX_HISTORY_TURNS, generate_answer
 from security.pdf_validator import (
     PDFValidationError,
     safe_display_name,
@@ -31,6 +31,7 @@ from security.pdf_validator import (
 )
 from security.pdf_sandbox import extract_pages_with_timeout
 from security.prompt_guard import sanitize_chunk_text, scan_for_injection
+from security.privacy_gate import needs_approval, privacy_levels_of
 
 UPLOAD_DIR = Path(__file__).parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -225,7 +226,7 @@ if "pending_personal" not in st.session_state:
     st.session_state.pending_personal = None
 
 
-def _show_answer(result: dict) -> None:
+def _show_answer(result: dict, used_privacy: list[str]) -> None:
     with st.chat_message("assistant"):
         st.markdown(render_answer(result["answer"]))
         if result["sources"]:
@@ -236,6 +237,9 @@ def _show_answer(result: dict) -> None:
         "role": "assistant",
         "content": result["answer"],
         "sources": result.get("sources", []),
+        # Remembered so a later call that resends this answer as history is
+        # gated the same way as the documents it came from.
+        "used_privacy": used_privacy,
     })
 
 
@@ -255,10 +259,16 @@ if st.session_state.pending_personal is not None:
     personal_docs = sorted({
         c["doc_name"] for c in pending["chunks"] if c.get("privacy") == "personal"
     })
-    st.warning(
-        f"This answer would send excerpts from **Personal** document(s) "
-        f"({', '.join(personal_docs)}) to the Claude API. Proceed?"
-    )
+    if personal_docs:
+        st.warning(
+            f"This answer would send excerpts from **Personal** document(s) "
+            f"({', '.join(personal_docs)}) to the Claude API. Proceed?"
+        )
+    else:
+        st.warning(
+            "This answer would resend earlier replies that used **Personal** "
+            "documents to the Claude API, as conversation context. Proceed?"
+        )
     col1, col2 = st.columns(2)
     approve = col1.button("✅ Send to Claude", key="approve_personal")
     cancel = col2.button("❌ Don't send", key="cancel_personal")
@@ -266,14 +276,17 @@ if st.session_state.pending_personal is not None:
     if approve:
         with st.spinner("Generating answer…"):
             result = generate_answer(pending["question"], pending["chunks"], history=pending["history"])
-        _show_answer(result)
+        # Tagged personal even if only the history was: this answer was built
+        # with Personal content in its context.
+        used = sorted(set(privacy_levels_of(pending["chunks"])) | {"personal"})
+        _show_answer(result, used)
         st.session_state.pending_personal = None
         st.rerun()
     elif cancel:
         _show_answer({
             "answer": "Okay — I won't send that Personal data to Claude. Ask something else, or mark the document Public if you'd like it answered automatically.",
             "sources": [],
-        })
+        }, [])
         st.session_state.pending_personal = None
         st.rerun()
 
@@ -294,8 +307,8 @@ elif question := st.chat_input("Ask a question about your documents…"):
         with st.spinner("Searching documents…"):
             chunks = retrieve(question, top_k=5, history=history)
 
-        has_personal = any(c.get("privacy") == "personal" for c in chunks)
-        if has_personal:
+        # Only the turns that will actually be resent (see trim_history).
+        if needs_approval(chunks, history[-MAX_HISTORY_TURNS:]):
             # Stop here. No answer is generated and no API call is made until
             # the user explicitly approves on the next run, above.
             st.session_state.pending_personal = {
@@ -307,7 +320,7 @@ elif question := st.chat_input("Ask a question about your documents…"):
         else:
             with st.spinner("Generating answer…"):
                 result = generate_answer(question, chunks, history=history)
-            _show_answer(result)
+            _show_answer(result, privacy_levels_of(chunks))
 
 # Clear chat button
 if st.session_state.messages:

@@ -30,7 +30,7 @@ MODEL = "claude-haiku-5-5"
 
 SYSTEM_PROMPT = """You rewrite follow-up questions so they can stand alone.
 
-Given a conversation and the user's latest question, rewrite the latest question
+Given the user's earlier questions and their latest question, rewrite the latest question
 so it makes sense with no conversation context — resolve pronouns and references
 like "it", "that", "the prior year", "those figures".
 
@@ -39,6 +39,15 @@ Rules:
 2. If the question already stands alone, output it unchanged.
 3. Never answer the question. Never invent details that are not in the conversation.
 4. Keep it short and keep the user's intent exactly."""
+
+
+def build_transcript(history: list[dict] | None) -> str:
+    """The user's earlier questions, one per line. Assistant turns are dropped."""
+    return "\n".join(
+        f"User: {turn['content']}"
+        for turn in (history or [])
+        if turn.get("role") == "user" and turn.get("content")
+    )
 
 
 def condense_question(question: str, history: list[dict] | None = None) -> str:
@@ -61,10 +70,13 @@ def condense_question(question: str, history: list[dict] | None = None) -> str:
     if not api_key:
         return question
 
-    transcript = "\n".join(
-        f"{turn['role'].capitalize()}: {turn['content']}" for turn in history
-    )
-    user_message = f"""Conversation so far:
+    # Only the user's own earlier questions — never the assistant's answers.
+    # Answers can contain facts from Personal documents, and this call runs
+    # before any approval prompt, so it must never carry document content.
+    transcript = build_transcript(history)
+    if not transcript:
+        return question
+    user_message = f"""Earlier questions from the user:
 {transcript}
 
 Latest question: {question}
