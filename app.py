@@ -100,6 +100,10 @@ with st.sidebar:
             st.rerun()
         st.stop()
 
+    # A message set right before st.rerun() is wiped by the redraw; show it now.
+    if flash := st.session_state.pop("flash", None):
+        st.success(flash)
+
     uploaded_files = st.file_uploader(
         "Upload PDF files",
         type=["pdf"],
@@ -108,14 +112,23 @@ with st.sidebar:
     )
 
     if uploaded_files:
+        seen_this_run = set()
         for uf in uploaded_files:
             display_name = safe_display_name(uf.name)
-            file_key = f"{uf.name}_{uf.size}"
 
             # getvalue() reads the full buffer without disturbing any read
             # position, so it's safe to call again on every rerun.
             data = uf.getvalue()
             doc_id = hashlib.sha256(data).hexdigest()
+
+            # Widget keys come from the content, and each file is shown once:
+            # the same file picked twice would give two widgets one key, which
+            # crashes the page.
+            if doc_id in seen_this_run:
+                st.info(f"ℹ️ {display_name} was selected twice — showing it once.")
+                continue
+            seen_this_run.add(doc_id)
+            file_key = doc_id[:16]
 
             # Whole-document duplicate detection: identical bytes mean this
             # is the same file, full stop — skip before any parsing, chunking
@@ -188,8 +201,10 @@ with st.sidebar:
                                     "the app treats document content as data, never as "
                                     "instructions — but you should know it's there."
                                 )
+                            # No st.rerun(): the document list below is drawn
+                            # after this, so it already includes the new file,
+                            # and the message (and any warning above) stays.
                             st.success(f"✅ {display_name} — {new_count} chunks added ({privacy})")
-                            st.rerun()
 
                         except PDFValidationError as e:
                             if save_path:
@@ -234,7 +249,7 @@ with st.sidebar:
                     file_record = document_registry.remove(doc["doc_id"])
                     if file_record:
                         (UPLOAD_DIR / file_record["stored_path"]).unlink(missing_ok=True)
-                    st.success(f"Removed {doc['doc_name']} ({removed} chunks + file deleted)")
+                    st.session_state["flash"] = f"Removed {doc['doc_name']} ({removed} chunks + file deleted)"
                     st.rerun()
 
         if legacy_count:
@@ -252,7 +267,7 @@ with st.sidebar:
     if vector_store.total_chunks() > 0 or document_registry.list_all():
         if st.button("Rebuild index", help="Clear all stored chunks, then re-upload your PDFs."):
             cleared = _rebuild_index()
-            st.success(f"Index cleared ({cleared} chunks). Re-upload your PDFs.")
+            st.session_state["flash"] = f"Index cleared ({cleared} chunks). Re-upload your PDFs."
             st.rerun()
 
 # ── Main Area: Chat Interface ────────────────────────────────────────────────

@@ -28,7 +28,7 @@ def test_clear_chat_discards_pending_approval():
     at.button(key="clear_chat").click().run()
     # The Clear chat handler sits at the bottom of app.py, so the click's run
     # drew the prompt before clearing it; its st.rerun() then redraws the page.
-    # AppTest doesn't follow that rerun on its own, so redraw like the browser.
+    # AppTest didn't apply that rerun here, so redraw like the browser does.
     at.run()
 
     assert at.session_state["pending_personal"] is None

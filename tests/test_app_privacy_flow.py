@@ -60,8 +60,8 @@ def _add_doc(doc_id: str, privacy: str) -> None:
 
 def _ask(at: AppTest, question: str) -> None:
     at.chat_input[0].set_value(question).run()
-    # When approval is needed the app calls st.rerun(); AppTest doesn't follow
-    # it, so redraw once like the browser does.
+    # When approval is needed the app calls st.rerun(). AppTest doesn't always
+    # apply it; one more redraw is harmless (the pending approval persists).
     at.run()
 
 

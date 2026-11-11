@@ -35,7 +35,7 @@ def test_damaged_index_shows_a_message_and_rebuild_recovers(temp_index):
     assert any("damaged" in e.value for e in at.error)
 
     at.button(key="rebuild_damaged").click().run()
-    at.run()  # the button's st.rerun(); AppTest doesn't follow it on its own
+    at.run()  # the button calls st.rerun(); AppTest doesn't always apply it, and an extra redraw is harmless here
     assert not at.exception
     assert not any("damaged" in e.value for e in at.error)
     assert not (temp_index / "metadata.json").exists()
