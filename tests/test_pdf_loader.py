@@ -43,6 +43,17 @@ def test_doc_name_captured():
     assert pages[0]["doc_name"] == path.name
 
 
+def test_open_error_does_not_show_the_file_path(tmp_path):
+    # This message reaches the browser; local paths must not.
+    missing = tmp_path / "0123abcd.pdf"
+    try:
+        load_pdf(missing, doc_name="report.pdf")
+        assert False, "Should have raised ValueError"
+    except ValueError as e:
+        assert "report.pdf" in str(e)
+        assert str(tmp_path) not in str(e) and "0123abcd" not in str(e)
+
+
 def test_invalid_path_raises():
     try:
         load_pdf("/does/not/exist.pdf")

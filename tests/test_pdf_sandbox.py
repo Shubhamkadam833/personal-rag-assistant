@@ -48,6 +48,13 @@ def test_bad_pdf_raises_validation_error_not_a_hang(tmp_path):
         extract_pages_with_timeout(bad_path, "bad.pdf", timeout_seconds=10)
 
 
+def test_user_message_never_contains_the_stored_path(tmp_path):
+    missing = tmp_path / "0123abcd.pdf"
+    with pytest.raises(PDFValidationError) as e:
+        extract_pages_with_timeout(missing, "report.pdf", timeout_seconds=30)
+    assert str(tmp_path) not in str(e.value) and "0123abcd" not in str(e.value)
+
+
 def test_child_does_not_rerun_the_main_script(tmp_path):
     # Regression: under Streamlit, the old multiprocessing version re-imported
     # the main script (app.py) in the child, booting a second app per upload.
