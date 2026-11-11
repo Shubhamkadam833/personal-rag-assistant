@@ -326,4 +326,7 @@ elif question := st.chat_input("Ask a question about your documents…"):
 if st.session_state.messages:
     if st.button("🗑 Clear chat", key="clear_chat"):
         st.session_state.messages = []
+        # A pending approval belongs to the conversation being cleared;
+        # approving it later would resend the history the user just wiped.
+        st.session_state.pending_personal = None
         st.rerun()
