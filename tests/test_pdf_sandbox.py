@@ -3,19 +3,15 @@ Tests for security/pdf_sandbox.py — extraction runs in an isolated process
 with a wall-clock timeout.
 
 TESTING THE TIMEOUT WITHOUT A FAKE SLOW WORKER:
-  The sandbox uses multiprocessing's "spawn" start method, which runs the
-  worker in a genuinely fresh Python interpreter — it re-imports modules from
-  disk rather than inheriting the parent process's memory. That means a
-  monkeypatched stand-in worker in the test process would NOT be visible to
-  the child, making a "swap in a slow function" test unreliable.
-
-  Instead, the timeout test uses a real (trivial, valid) PDF with an
-  intentionally tiny timeout (0.01s). Spawning a fresh Python interpreter and
-  importing PyMuPDF alone reliably takes longer than that on any machine, so
-  this deterministically exercises the real terminate/kill path — without
-  depending on anything about the PDF's content.
+  The worker runs in a fresh Python interpreter, so a monkeypatched stand-in
+  in the test process would not be visible to it. Instead the timeout test
+  uses a real PDF with a tiny timeout (0.01s): starting an interpreter and
+  importing PyMuPDF reliably takes longer than that, so it deterministically
+  exercises the real kill path.
 """
+import subprocess
 import sys
+import textwrap
 import time
 from pathlib import Path
 
@@ -52,6 +48,26 @@ def test_bad_pdf_raises_validation_error_not_a_hang(tmp_path):
         extract_pages_with_timeout(bad_path, "bad.pdf", timeout_seconds=10)
 
 
+def test_child_does_not_rerun_the_main_script(tmp_path):
+    # Regression: under Streamlit, the old multiprocessing version re-imported
+    # the main script (app.py) in the child, booting a second app per upload.
+    # This main script appends a line every time its top-level code runs.
+    pdf_path = _write_pdf(tmp_path, "regression check")
+    marker = tmp_path / "runs.txt"
+    script = tmp_path / "fake_app.py"
+    script.write_text(textwrap.dedent(f"""
+        import sys
+        sys.path.insert(0, {str(Path(__file__).parent.parent)!r})
+        with open({str(marker)!r}, "a") as f:
+            f.write("run\\n")
+        from security.pdf_sandbox import extract_pages_with_timeout
+        pages = extract_pages_with_timeout({str(pdf_path)!r}, "t.pdf", timeout_seconds=30)
+        assert "regression check" in pages[0]["text"]
+    """))
+    subprocess.run([sys.executable, str(script)], check=True, timeout=60)
+    assert marker.read_text().count("run") == 1
+
+
 def test_timeout_terminates_the_process(tmp_path):
     pdf_path = _write_pdf(tmp_path)
 
@@ -60,6 +76,6 @@ def test_timeout_terminates_the_process(tmp_path):
         extract_pages_with_timeout(pdf_path, "test.pdf", timeout_seconds=0.01)
     elapsed = time.monotonic() - start
 
-    # Bounded by the timeout plus teardown (terminate, then join(5) as a
-    # last resort) — not by how long extraction would otherwise have taken.
+    # Bounded by the timeout plus killing the child, not by how long
+    # extraction would otherwise have taken.
     assert elapsed < 8
