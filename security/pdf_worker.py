@@ -11,11 +11,13 @@ import json
 import sys
 
 from rag.pdf_loader import load_pdf
+from security.pdf_validator import check_document
 
 
 def main() -> None:
     pdf_path, doc_name = sys.argv[1], sys.argv[2]
     try:
+        check_document(pdf_path, doc_name)  # PDFValidationError is a ValueError
         result = {"ok": True, "pages": load_pdf(pdf_path, doc_name=doc_name)}
     except ValueError as e:
         # load_pdf's messages are safe to show; the underlying cause (which may
@@ -23,7 +25,8 @@ def main() -> None:
         cause = e.__cause__ or e
         print(f"{type(cause).__name__}: {cause}", file=sys.stderr)
         result = {"ok": False, "error": str(e)}
-    sys.stdout.write(json.dumps(result, ensure_ascii=True))
+    # Last line, on its own: MuPDF prints its own messages to stdout too.
+    sys.stdout.write("\n" + json.dumps(result, ensure_ascii=True) + "\n")
 
 
 if __name__ == "__main__":

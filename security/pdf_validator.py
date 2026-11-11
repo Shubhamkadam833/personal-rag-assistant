@@ -12,14 +12,18 @@ WHAT THIS PROTECTS AGAINST:
      the upload directory and could write outside it, or overwrite a file that
      is already there. Stored files get a random name instead.
 
-ORDER MATTERS:
-  Validation runs on the file's BYTES, before anything is written to disk, so a
-  rejected file never lands in the uploads directory at all.
+TWO STAGES:
+  validate_pdf_bytes() runs in the app process on the raw BYTES, before
+  anything is written to disk: extension, size, signature. It never parses the
+  PDF. check_document() does the checks that need parsing (readable, password,
+  page count) and runs only inside the time-limited worker process
+  (security/pdf_worker.py), so a PDF built to hang or crash the parser can't
+  take the app down.
 
 WHAT THIS DOES NOT DO:
   It does not make a malicious PDF safe to parse. PyMuPDF still does the
-  parsing, and a parser bug is still a parser bug. These checks reduce the
-  obvious ways things go wrong; they are not a sandbox.
+  parsing, and a parser bug is still a parser bug. Process isolation with a
+  time limit contains the damage; it is not a security sandbox.
 """
 
 import re
@@ -37,9 +41,11 @@ class PDFValidationError(ValueError):
     """Raised when an upload is not a PDF we are willing to process."""
 
 
-def validate_pdf_bytes(data: bytes, original_name: str) -> int:
+def validate_pdf_bytes(data: bytes, original_name: str) -> None:
     """
-    Check raw uploaded bytes. Returns the page count if the file is acceptable.
+    Quick checks on the raw uploaded bytes, run in the app process. They never
+    parse the PDF: anything that does (check_document, text extraction) runs
+    in the time-limited worker process.
 
     Raises PDFValidationError with a message safe to show the user — it never
     includes internal paths or system details.
@@ -64,10 +70,19 @@ def validate_pdf_bytes(data: bytes, original_name: str) -> int:
             f"'{display}' does not look like a PDF inside, whatever its name says."
         )
 
+
+
+def check_document(path: str | Path, display: str) -> None:
+    """
+    Checks that need the PDF parsed: readable, not password protected, within
+    the page limit. Called only from security/pdf_worker.py, inside the
+    time-limited process, so a PDF that hangs or crashes the parser can't take
+    the app down with it.
+    """
     try:
-        doc = fitz.open(stream=data, filetype="pdf")
-    except Exception:
-        raise PDFValidationError(f"'{display}' is corrupted or cannot be read.")
+        doc = fitz.open(str(path))
+    except Exception as e:
+        raise PDFValidationError(f"'{display}' is corrupted or cannot be read.") from e
 
     try:
         if doc.needs_pass:
@@ -83,8 +98,6 @@ def validate_pdf_bytes(data: bytes, original_name: str) -> int:
             )
     finally:
         doc.close()
-
-    return page_count
 
 
 def safe_display_name(original_name: str) -> str:
@@ -108,8 +121,5 @@ def safe_storage_path(upload_dir: Path) -> Path:
     out of the directory or overwrite a file that is already there.
     """
     upload_dir.mkdir(parents=True, exist_ok=True)
-
-    while True:
-        candidate = upload_dir / f"{secrets.token_hex(16)}.pdf"
-        if not candidate.exists():
-            return candidate
+    # 128 random bits: hitting an existing name is not a realistic case.
+    return upload_dir / f"{secrets.token_hex(16)}.pdf"
