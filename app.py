@@ -18,6 +18,14 @@ import sys
 # Allow imports from the project root
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Check HTTPS certificates against the Windows certificate store (as browsers
+# and pip do), not the certifi list that requests/httpx ship with. Networks
+# that inspect HTTPS (antivirus web shields, office networks) use a certificate
+# Windows trusts but certifi doesn't, which made every Claude and Hugging Face
+# call fail with CERTIFICATE_VERIFY_FAILED.
+import truststore
+truststore.inject_into_ssl()
+
 from rag.text_chunker import chunk_pages
 from rag.embeddings import embed_texts
 from rag import vector_store
