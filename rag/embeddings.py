@@ -9,6 +9,12 @@ WHAT IS AN EMBEDDING?
 MODEL USED:
   "all-MiniLM-L6-v2" — small, fast, and runs entirely on your computer.
   It downloads once (~90 MB) on first use.
+
+LOADING FROM DISK FIRST:
+  By default the library checks huggingface.co for updates on every load,
+  even when the model is already downloaded. With no or restricted network,
+  that meant ~75 seconds of retries and then a crash, so uploads failed.
+  We load the local copy first (no network) and only download if it's missing.
 """
 
 from sentence_transformers import SentenceTransformer
@@ -19,10 +25,18 @@ MODEL_NAME = "all-MiniLM-L6-v2"
 _model: SentenceTransformer | None = None
 
 
+def _load_model() -> SentenceTransformer:
+    try:
+        return SentenceTransformer(MODEL_NAME, local_files_only=True)
+    except OSError:
+        # Not downloaded yet (first run): fetch it once.
+        return SentenceTransformer(MODEL_NAME)
+
+
 def get_model() -> SentenceTransformer:
     global _model
     if _model is None:
-        _model = SentenceTransformer(MODEL_NAME)
+        _model = _load_model()
     return _model
 
 

@@ -10,6 +10,7 @@ RUN WITH:
 """
 
 import hashlib
+import logging
 import streamlit as st
 from pathlib import Path
 import sys
@@ -35,6 +36,8 @@ from security.privacy_gate import needs_approval, privacy_levels_of
 
 UPLOAD_DIR = Path(__file__).parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+logger = logging.getLogger(__name__)
 
 
 def render_answer(text: str) -> str:
@@ -154,9 +157,10 @@ with st.sidebar:
                                 save_path.unlink(missing_ok=True)
                             st.error(f"❌ {e}")
                         except Exception:
-                            # Deliberately generic: exception text can carry
-                            # internal file paths, which should not reach the
-                            # browser.
+                            # The browser gets a generic message (exception text
+                            # can carry internal paths); the full traceback goes
+                            # to the terminal so the failure can be diagnosed.
+                            logger.exception("Indexing failed for %s", display_name)
                             if save_path:
                                 save_path.unlink(missing_ok=True)
                             st.error(f"❌ Could not process {display_name}.")
