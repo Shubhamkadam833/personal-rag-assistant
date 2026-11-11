@@ -35,6 +35,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from rag import vector_store
+
 STORE_DIR = Path(__file__).parent.parent / "data" / "chroma_db"
 REGISTRY_FILE = STORE_DIR / "documents.json"
 
@@ -43,14 +45,18 @@ DEFAULT_PRIVACY = "personal"
 
 
 def _load() -> dict:
-    if REGISTRY_FILE.exists():
+    if not REGISTRY_FILE.exists():
+        return {}
+    try:
         return json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
-    return {}
+    except (OSError, ValueError) as e:
+        raise vector_store.IndexDamagedError("the document registry can't be read") from e
 
 
 def _save(registry: dict) -> None:
     STORE_DIR.mkdir(parents=True, exist_ok=True)
-    REGISTRY_FILE.write_text(json.dumps(registry, ensure_ascii=False, indent=2), encoding="utf-8")
+    data = json.dumps(registry, ensure_ascii=False, indent=2).encode("utf-8")
+    vector_store.write_atomic(REGISTRY_FILE, lambda f: f.write(data))
 
 
 def add(
@@ -86,14 +92,19 @@ def get(doc_id: str) -> dict | None:
     return _load().get(doc_id)
 
 
-def find_by_hash(sha256: str) -> str | None:
-    """Return the doc_id of an already-registered document with this hash, if any.
-
-    Since doc_id IS the sha256, this is just an existence check — kept as its
-    own function so callers read as "is this a duplicate?" rather than poking
-    at the ID scheme directly.
+def is_indexed(doc_id: str) -> bool:
     """
-    return sha256 if sha256 in _load() else None
+    True if this exact file is registered AND still has chunks in the index.
+
+    A record with no chunks (e.g. the index files were deleted by hand to
+    recover from damage) is dropped, so it can't block re-uploading the file.
+    """
+    if doc_id not in _load():
+        return False
+    if any(d["doc_id"] == doc_id for d in vector_store.list_documents()):
+        return True
+    remove(doc_id)
+    return False
 
 
 def remove(doc_id: str) -> dict | None:
@@ -114,12 +125,12 @@ def clear_all() -> int:
     """
     Delete every registry entry. Returns the number removed.
 
-    Must be called together with vector_store.clear_all() — if the registry
-    survives a chunk wipe, re-uploading the exact same file afterwards would
-    be rejected by find_by_hash() as "already loaded" even though its chunks
-    are gone, permanently orphaning that document.
+    Called together with vector_store.clear_all(), and works on a damaged
+    registry (returns 0 if it couldn't be read).
     """
-    registry = _load()
-    count = len(registry)
+    try:
+        count = len(_load())
+    except vector_store.IndexDamagedError:
+        count = 0
     REGISTRY_FILE.unlink(missing_ok=True)
     return count

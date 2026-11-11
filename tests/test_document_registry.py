@@ -30,12 +30,6 @@ def test_get_missing_returns_none():
     assert document_registry.get("does-not-exist") is None
 
 
-def test_find_by_hash_detects_duplicate():
-    document_registry.add("abc123", "report.pdf", "personal", "random1.pdf")
-    assert document_registry.find_by_hash("abc123") == "abc123"
-    assert document_registry.find_by_hash("different-hash") is None
-
-
 def test_rejects_unknown_privacy_level():
     with pytest.raises(ValueError):
         document_registry.add("abc123", "report.pdf", "top-secret", "random1.pdf")
