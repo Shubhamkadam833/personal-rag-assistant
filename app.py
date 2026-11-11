@@ -50,10 +50,15 @@ logger = logging.getLogger(__name__)
 
 def render_answer(text: str) -> str:
     """
-    Escape '$' before display. Streamlit's markdown reads $...$ as LaTeX math,
-    which silently eats the text between two dollar amounts.
+    Make model or user text safe to show with st.markdown.
+
+    - '$' is escaped: Streamlit reads $...$ as LaTeX math, which silently eats
+      the text between two dollar amounts.
+    - '![' is escaped: the browser loads a markdown image by itself, so a PDF
+      that tricks the model into writing one could send data to any server
+      with no click. Escaped, it shows as plain text and nothing is fetched.
     """
-    return text.replace("$", r"\$")
+    return text.replace("$", r"\$").replace("![", r"!\[")
 
 st.set_page_config(
     page_title="Personal AI Document Assistant",

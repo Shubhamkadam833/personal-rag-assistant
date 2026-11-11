@@ -32,7 +32,8 @@ def load_pdf(file_path: str | Path, doc_name: str | None = None) -> list[dict]:
     try:
         pdf = fitz.open(str(path))
     except Exception as e:
-        raise ValueError(f"Could not open '{doc_name}': {e}")
+        # The library's error text names the file path; this message reaches the user.
+        raise ValueError(f"Could not open '{doc_name}'.") from e
 
     for page_num in range(len(pdf)):
         page = pdf[page_num]

