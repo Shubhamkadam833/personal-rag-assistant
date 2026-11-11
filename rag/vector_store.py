@@ -85,26 +85,34 @@ def add_chunks(chunks: list[dict], embeddings: list[list[float]]) -> int:
     return len(new_vecs)
 
 
-def search(query_embedding: list[float], top_k: int = 5) -> list[dict]:
+def search(query_embedding: list[float], top_k: int = 5, *, allowed_doc_ids: set[str]) -> list[dict]:
     """
-    Find the top_k most relevant chunks using cosine similarity.
-    Returns list of dicts with text, doc_name, page, distance.
+    Find the top_k most relevant chunks, among documents in `allowed_doc_ids`
+    only, using cosine similarity. Returns list of dicts with text, doc_id,
+    doc_name, page, distance.
+
+    Filtering happens before ranking, so excluded documents can neither be
+    returned nor push allowed ones out of the top_k. The argument is required
+    so no caller can search everything by accident.
     """
     embeddings, metadata = _load()
-    if embeddings.shape[0] == 0:
+    candidates = np.flatnonzero([m.get("doc_id") in allowed_doc_ids for m in metadata])
+    if candidates.size == 0:
         return []
 
     query = np.array(query_embedding, dtype=np.float32)
 
     # Cosine similarity: dot product of normalized vectors
-    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    vectors = embeddings[candidates]
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
     norms = np.where(norms == 0, 1, norms)
-    normed = embeddings / norms
+    normed = vectors / norms
 
     query_norm = query / (np.linalg.norm(query) or 1)
-    similarities = normed @ query_norm  # shape: (N,)
+    sims = normed @ query_norm  # shape: (len(candidates),)
+    similarities = dict(zip(candidates, sims))
 
-    top_indices = np.argsort(similarities)[::-1][:top_k]
+    top_indices = candidates[np.argsort(sims)[::-1][:top_k]]
 
     results = []
     for idx in top_indices:
