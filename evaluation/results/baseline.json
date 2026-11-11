@@ -1,0 +1,389 @@
+{
+  "timestamp": "2026-11-10T22:30:51+00:00",
+  "git_commit": "0cc9b15",
+  "config": {
+    "search_method": "semantic",
+    "reranking": false,
+    "embedding_model": "all-MiniLM-L6-v2",
+    "chunking": "fixed 150 words / 30 overlap"
+  },
+  "dataset_version": "1",
+  "corpus_version": "1",
+  "counts": {
+    "questions_total": 31,
+    "questions_scored": 26,
+    "chunks_indexed": 30
+  },
+  "metrics": {
+    "recall_at_5": 0.962,
+    "mrr_at_10": 0.863,
+    "evidence_intactness": 1.0,
+    "recall_at_5_by_category": {
+      "direct": 0.875,
+      "numerical": 1.0,
+      "multi_document": 1.0,
+      "multi_section": 1.0,
+      "adversarial": 1.0
+    },
+    "retrieval_latency_ms": {
+      "p50": 21.7,
+      "p95": 27.0
+    }
+  },
+  "split_evidence": [],
+  "failed_questions": [
+    {
+      "id": "D01",
+      "category": "direct",
+      "recall_at_5": 0.0,
+      "reciprocal_rank_at_10": 0.16666666666666666,
+      "top_5": [
+        "northwind_robotics_2024.pdf p1",
+        "northwind_robotics_2024.pdf p4",
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p3"
+      ]
+    }
+  ],
+  "per_question": [
+    {
+      "id": "D01",
+      "category": "direct",
+      "recall_at_5": 0.0,
+      "reciprocal_rank_at_10": 0.16666666666666666,
+      "top_5": [
+        "northwind_robotics_2024.pdf p1",
+        "northwind_robotics_2024.pdf p4",
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p3"
+      ]
+    },
+    {
+      "id": "D02",
+      "category": "direct",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 0.2,
+      "top_5": [
+        "northwind_robotics_2024.pdf p4",
+        "northwind_robotics_2024.pdf p1",
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p3",
+        "northwind_robotics_2024.pdf p1"
+      ]
+    },
+    {
+      "id": "D03",
+      "category": "direct",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "cobalt_harbor_2024.pdf p4",
+        "cobalt_harbor_2024.pdf p2",
+        "cobalt_harbor_2024.pdf p1",
+        "cobalt_harbor_2024.pdf p3",
+        "cobalt_harbor_2024.pdf p4"
+      ]
+    },
+    {
+      "id": "D04",
+      "category": "direct",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "expense_policy_v3.pdf p2",
+        "expense_policy_v3.pdf p1",
+        "cobalt_harbor_2024.pdf p3",
+        "expense_policy_v3.pdf p3",
+        "expense_policy_v3.pdf p3"
+      ]
+    },
+    {
+      "id": "D05",
+      "category": "direct",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "expense_policy_v3.pdf p2",
+        "expense_policy_v3.pdf p1",
+        "lumen_grid_2024.pdf p3",
+        "lumen_grid_2024.pdf p4",
+        "expense_policy_v3.pdf p3"
+      ]
+    },
+    {
+      "id": "D06",
+      "category": "direct",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "expense_policy_v3.pdf p3",
+        "expense_policy_v3.pdf p1",
+        "expense_policy_v3.pdf p2",
+        "lumen_grid_2024.pdf p4",
+        "northwind_robotics_2024.pdf p4"
+      ]
+    },
+    {
+      "id": "D07",
+      "category": "direct",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "lumen_grid_2024.pdf p4",
+        "lumen_grid_2024.pdf p3",
+        "lumen_grid_2024.pdf p1",
+        "lumen_grid_2024.pdf p2",
+        "lumen_grid_2024.pdf p3"
+      ]
+    },
+    {
+      "id": "D08",
+      "category": "direct",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "northwind_robotics_2024.pdf p4",
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p1",
+        "northwind_robotics_2024.pdf p1",
+        "northwind_robotics_2024.pdf p3"
+      ]
+    },
+    {
+      "id": "N01",
+      "category": "numerical",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p4",
+        "northwind_robotics_2024.pdf p3",
+        "northwind_robotics_2024.pdf p1",
+        "northwind_robotics_2024.pdf p1"
+      ]
+    },
+    {
+      "id": "N02",
+      "category": "numerical",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "lumen_grid_2024.pdf p2",
+        "lumen_grid_2024.pdf p4",
+        "lumen_grid_2024.pdf p1",
+        "lumen_grid_2024.pdf p1",
+        "lumen_grid_2024.pdf p3"
+      ]
+    },
+    {
+      "id": "N03",
+      "category": "numerical",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "cobalt_harbor_2024.pdf p2",
+        "cobalt_harbor_2024.pdf p4",
+        "cobalt_harbor_2024.pdf p1",
+        "cobalt_harbor_2024.pdf p1",
+        "cobalt_harbor_2024.pdf p3"
+      ]
+    },
+    {
+      "id": "N04",
+      "category": "numerical",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p4",
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p1",
+        "northwind_robotics_2024.pdf p3"
+      ]
+    },
+    {
+      "id": "N05",
+      "category": "numerical",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 0.3333333333333333,
+      "top_5": [
+        "northwind_robotics_2024.pdf p4",
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p1",
+        "northwind_robotics_2024.pdf p3",
+        "northwind_robotics_2024.pdf p1"
+      ]
+    },
+    {
+      "id": "N06",
+      "category": "numerical",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "cobalt_harbor_2024.pdf p2",
+        "cobalt_harbor_2024.pdf p1",
+        "cobalt_harbor_2024.pdf p4",
+        "cobalt_harbor_2024.pdf p3",
+        "cobalt_harbor_2024.pdf p1"
+      ]
+    },
+    {
+      "id": "N07",
+      "category": "numerical",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "lumen_grid_2024.pdf p2",
+        "lumen_grid_2024.pdf p4",
+        "lumen_grid_2024.pdf p1",
+        "lumen_grid_2024.pdf p2",
+        "lumen_grid_2024.pdf p3"
+      ]
+    },
+    {
+      "id": "N08",
+      "category": "numerical",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "cobalt_harbor_2024.pdf p2",
+        "cobalt_harbor_2024.pdf p4",
+        "cobalt_harbor_2024.pdf p1",
+        "cobalt_harbor_2024.pdf p1",
+        "cobalt_harbor_2024.pdf p3"
+      ]
+    },
+    {
+      "id": "M01",
+      "category": "multi_document",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "cobalt_harbor_2024.pdf p2",
+        "lumen_grid_2024.pdf p2",
+        "northwind_robotics_2024.pdf p2",
+        "expense_policy_v3.pdf p3",
+        "expense_policy_v3.pdf p1"
+      ]
+    },
+    {
+      "id": "M02",
+      "category": "multi_document",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "northwind_robotics_2024.pdf p1",
+        "northwind_robotics_2024.pdf p4",
+        "northwind_robotics_2024.pdf p3",
+        "northwind_robotics_2024.pdf p2",
+        "cobalt_harbor_2024.pdf p1"
+      ]
+    },
+    {
+      "id": "M03",
+      "category": "multi_document",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 0.25,
+      "top_5": [
+        "expense_policy_v3.pdf p3",
+        "cobalt_harbor_2024.pdf p2",
+        "northwind_robotics_2024.pdf p4",
+        "lumen_grid_2024.pdf p1",
+        "lumen_grid_2024.pdf p2"
+      ]
+    },
+    {
+      "id": "M04",
+      "category": "multi_document",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "northwind_robotics_2024.pdf p2",
+        "cobalt_harbor_2024.pdf p2",
+        "northwind_robotics_2024.pdf p4",
+        "northwind_robotics_2024.pdf p3",
+        "northwind_robotics_2024.pdf p1"
+      ]
+    },
+    {
+      "id": "M05",
+      "category": "multi_document",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "cobalt_harbor_2024.pdf p2",
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p4",
+        "cobalt_harbor_2024.pdf p1",
+        "cobalt_harbor_2024.pdf p4"
+      ]
+    },
+    {
+      "id": "S01",
+      "category": "multi_section",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 0.5,
+      "top_5": [
+        "northwind_robotics_2024.pdf p4",
+        "northwind_robotics_2024.pdf p3",
+        "northwind_robotics_2024.pdf p1",
+        "northwind_robotics_2024.pdf p2",
+        "northwind_robotics_2024.pdf p1"
+      ]
+    },
+    {
+      "id": "S02",
+      "category": "multi_section",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "lumen_grid_2024.pdf p2",
+        "lumen_grid_2024.pdf p4",
+        "lumen_grid_2024.pdf p1",
+        "lumen_grid_2024.pdf p1",
+        "lumen_grid_2024.pdf p3"
+      ]
+    },
+    {
+      "id": "S03",
+      "category": "multi_section",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "cobalt_harbor_2024.pdf p3",
+        "cobalt_harbor_2024.pdf p4",
+        "cobalt_harbor_2024.pdf p2",
+        "cobalt_harbor_2024.pdf p1",
+        "cobalt_harbor_2024.pdf p1"
+      ]
+    },
+    {
+      "id": "S04",
+      "category": "multi_section",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "lumen_grid_2024.pdf p4",
+        "lumen_grid_2024.pdf p3",
+        "lumen_grid_2024.pdf p1",
+        "lumen_grid_2024.pdf p3",
+        "lumen_grid_2024.pdf p2"
+      ]
+    },
+    {
+      "id": "A01",
+      "category": "adversarial",
+      "recall_at_5": 1.0,
+      "reciprocal_rank_at_10": 1.0,
+      "top_5": [
+        "lumen_grid_2024.pdf p2",
+        "lumen_grid_2024.pdf p4",
+        "lumen_grid_2024.pdf p1",
+        "lumen_grid_2024.pdf p1",
+        "lumen_grid_2024.pdf p3"
+      ]
+    }
+  ]
+}
