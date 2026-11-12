@@ -26,6 +26,10 @@ def chunk_pages(
     overlap: int = 30,
 ) -> list[dict]:
     """Split page text into overlapping word-level chunks."""
+    # Each chunk starts chunk_size - overlap words after the last one; at zero
+    # or below the loop never ends.
+    if not 0 <= overlap < chunk_size:
+        raise ValueError(f"need 0 <= overlap < chunk_size, got overlap={overlap}, chunk_size={chunk_size}")
     chunks = []
 
     for page in pages:

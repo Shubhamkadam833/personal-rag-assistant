@@ -1,9 +1,20 @@
 """Tests for text_chunker.py"""
 import sys
 from pathlib import Path
+
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rag.text_chunker import chunk_pages
+
+
+@pytest.mark.parametrize("chunk_size, overlap", [(150, 150), (150, 200), (150, -1), (0, 0)])
+def test_impossible_settings_are_refused_not_looped_on(chunk_size, overlap):
+    # Before the guard, overlap >= chunk_size looped forever, filling memory.
+    pages = [{"doc_name": "t.pdf", "page": 1, "text": " ".join(["w"] * 400)}]
+    with pytest.raises(ValueError):
+        chunk_pages(pages, chunk_size=chunk_size, overlap=overlap)
 
 
 def test_basic_chunking():

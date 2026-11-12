@@ -52,6 +52,12 @@ def test_rewriter_transcript_excludes_assistant_answers():
     assert "SECRET" not in transcript
 
 
+def test_rewriter_transcript_keeps_only_recent_turns():
+    # Same window as the answer call, so the prompt doesn't grow all session.
+    history = [{"role": "user", "content": f"q{i}"} for i in range(20)]
+    assert build_transcript(history).splitlines() == [f"User: q{i}" for i in range(14, 20)]
+
+
 def test_rewriter_transcript_empty_without_user_turns():
     assert build_transcript([{"role": "assistant", "content": "hi"}]) == ""
     assert build_transcript(None) == ""

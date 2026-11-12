@@ -41,11 +41,14 @@ Rules:
 4. Keep it short and keep the user's intent exactly."""
 
 
+MAX_HISTORY_TURNS = 6  # same window as the answer call (answer_generator.MAX_HISTORY_TURNS)
+
+
 def build_transcript(history: list[dict] | None) -> str:
-    """The user's earlier questions, one per line. Assistant turns are dropped."""
+    """The user's recent questions, one per line. Assistant turns are dropped."""
     return "\n".join(
         f"User: {turn['content']}"
-        for turn in (history or [])
+        for turn in (history or [])[-MAX_HISTORY_TURNS:]
         if turn.get("role") == "user" and turn.get("content")
     )
 

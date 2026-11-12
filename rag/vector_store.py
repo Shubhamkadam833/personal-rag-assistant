@@ -47,8 +47,39 @@ def write_atomic(path: Path, write: Callable[[BinaryIO], object]) -> None:
     os.replace(tmp, path)
 
 
+_cache: tuple | None = None  # (file stamp, embeddings, metadata)
+
+
+def _stamp() -> tuple:
+    """Identifies the current index files; changes whenever either file is replaced."""
+    out = []
+    for path in (EMBEDDINGS_FILE, METADATA_FILE):
+        try:
+            st = path.stat()
+            out.append((str(path), st.st_mtime_ns, st.st_size, st.st_ino))
+        except FileNotFoundError:
+            out.append((str(path), None))
+    return tuple(out)
+
+
 def _load() -> tuple[np.ndarray, list[dict]]:
-    """Load embeddings matrix and metadata list from disk. Raises IndexDamagedError."""
+    """
+    Load embeddings matrix and metadata list. Raises IndexDamagedError.
+
+    The parsed index is reused until either file changes, so a page redraw
+    doesn't re-read it from disk several times. Callers must not modify the
+    returned objects (none do; every writer builds new ones).
+    """
+    global _cache
+    stamp = _stamp()
+    if _cache is not None and _cache[0] == stamp:
+        return _cache[1], _cache[2]
+    embeddings, metadata = _read()
+    _cache = (stamp, embeddings, metadata)
+    return embeddings, metadata
+
+
+def _read() -> tuple[np.ndarray, list[dict]]:
     if not EMBEDDINGS_FILE.exists() and not METADATA_FILE.exists():
         return np.empty((0, 384), dtype=np.float32), []
     try:
