@@ -14,6 +14,7 @@ API KEY:
   Loaded from the .env file (ANTHROPIC_API_KEY). Never hardcoded.
 """
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -23,6 +24,8 @@ import anthropic
 from security.prompt_guard import redact_if_unsafe
 
 load_dotenv(Path(__file__).parent.parent / ".env")
+
+logger = logging.getLogger(__name__)
 
 MODEL = "claude-sonnet-5-5"
 NO_ANSWER = "I couldn't find this information in the uploaded documents."
@@ -80,6 +83,19 @@ def extract_used_excerpts(raw_text: str, excerpt_count: int) -> tuple[str, list[
                 used_indices.append(n)
 
     return clean_text, used_indices
+
+
+def api_error_message(e: anthropic.APIError) -> str:
+    """A short, safe explanation for the user. Full details go to the terminal log."""
+    if isinstance(e, anthropic.APIConnectionError):  # includes timeouts
+        return "I couldn't reach the Claude API. Check your internet connection and try again."
+    if isinstance(e, anthropic.AuthenticationError):
+        return "The Claude API rejected the API key. Check ANTHROPIC_API_KEY in your .env file."
+    if isinstance(e, anthropic.RateLimitError):
+        return "The Claude API rate limit was reached. Wait a minute and try again."
+    if isinstance(e, anthropic.APIStatusError) and e.status_code >= 500:
+        return "The Claude API is having problems right now. Try again shortly."
+    return "The request to the Claude API failed. Details were written to the terminal log."
 
 
 def trim_history(history: list[dict] | None, max_turns: int = MAX_HISTORY_TURNS) -> list[dict]:
@@ -145,12 +161,18 @@ Question: {question}"""
 
     client = anthropic.Anthropic(api_key=api_key)
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=trim_history(history) + [{"role": "user", "content": user_message}],
-    )
+    try:
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            messages=trim_history(history) + [{"role": "user", "content": user_message}],
+        )
+    except anthropic.APIError as e:
+        # The SDK has already retried twice. Uncaught, this crashed the page and
+        # showed a raw traceback (with local file paths) in the browser.
+        logger.exception("Claude API call failed")
+        return {"answer": api_error_message(e), "sources": []}
 
     # Find the text block (thinking blocks may come first on newer models)
     raw_text = ""
