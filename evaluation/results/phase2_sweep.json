@@ -1,0 +1,517 @@
+{
+  "timestamp": "2026-11-13T22:14:55+00:00",
+  "git_commit": "27be19c",
+  "runs": [
+    {
+      "config": {
+        "search_method": "semantic",
+        "reranking": false,
+        "embedding_model": "all-MiniLM-L6-v2",
+        "chunking": "fixed 150 words / 30 overlap"
+      },
+      "corpus_version": "1",
+      "counts": {
+        "questions_total": 31,
+        "questions_scored": 26,
+        "chunks_indexed": 30
+      },
+      "indexing": {
+        "seconds": 2.73,
+        "storage_kb": 81.3,
+        "chunks_over_model_limit_pct": 0.0
+      },
+      "metrics": {
+        "recall_at_5": 0.962,
+        "mrr_at_10": 0.863,
+        "evidence_intactness": 1.0,
+        "recall_at_5_by_category": {
+          "direct": 0.875,
+          "numerical": 1.0,
+          "multi_document": 1.0,
+          "multi_section": 1.0,
+          "adversarial": 1.0
+        },
+        "retrieval_latency_ms": {
+          "p50": 29.1,
+          "p95": 31.6
+        }
+      },
+      "failed_questions": [
+        {
+          "id": "D01",
+          "category": "direct",
+          "recall_at_5": 0.0,
+          "reciprocal_rank_at_10": 0.16666666666666666,
+          "top_5": [
+            "northwind_robotics_2024.pdf p1",
+            "northwind_robotics_2024.pdf p4",
+            "northwind_robotics_2024.pdf p2",
+            "northwind_robotics_2024.pdf p2",
+            "northwind_robotics_2024.pdf p3"
+          ]
+        }
+      ]
+    },
+    {
+      "config": {
+        "search_method": "semantic",
+        "reranking": false,
+        "embedding_model": "all-MiniLM-L6-v2",
+        "chunking": "fixed 150 words / 30 overlap"
+      },
+      "corpus_version": "2",
+      "counts": {
+        "questions_total": 31,
+        "questions_scored": 26,
+        "chunks_indexed": 30
+      },
+      "indexing": {
+        "seconds": 3.27,
+        "storage_kb": 81.3,
+        "chunks_over_model_limit_pct": 0.0
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "mrr_at_10": 0.875,
+        "evidence_intactness": 1.0,
+        "recall_at_5_by_category": {
+          "direct": 1.0,
+          "numerical": 1.0,
+          "multi_document": 1.0,
+          "multi_section": 1.0,
+          "adversarial": 1.0
+        },
+        "retrieval_latency_ms": {
+          "p50": 29.0,
+          "p95": 30.6
+        }
+      },
+      "failed_questions": []
+    },
+    {
+      "config": {
+        "search_method": "semantic",
+        "reranking": false,
+        "embedding_model": "all-MiniLM-L6-v2",
+        "chunking": "fixed 300 words / 50 overlap"
+      },
+      "corpus_version": "2",
+      "counts": {
+        "questions_total": 31,
+        "questions_scored": 26,
+        "chunks_indexed": 15
+      },
+      "indexing": {
+        "seconds": 2.33,
+        "storage_kb": 52.0,
+        "chunks_over_model_limit_pct": 86.7
+      },
+      "metrics": {
+        "recall_at_5": 0.962,
+        "mrr_at_10": 0.901,
+        "evidence_intactness": 1.0,
+        "recall_at_5_by_category": {
+          "direct": 1.0,
+          "numerical": 1.0,
+          "multi_document": 0.8,
+          "multi_section": 1.0,
+          "adversarial": 1.0
+        },
+        "retrieval_latency_ms": {
+          "p50": 28.7,
+          "p95": 31.7
+        }
+      },
+      "failed_questions": [
+        {
+          "id": "M03",
+          "category": "multi_document",
+          "recall_at_5": 0.0,
+          "reciprocal_rank_at_10": 0.1,
+          "top_5": [
+            "expense_policy_v3.pdf p3",
+            "expense_policy_v3.pdf p2",
+            "cobalt_harbor_2024.pdf p2",
+            "northwind_robotics_2024.pdf p4",
+            "northwind_robotics_2024.pdf p2"
+          ]
+        }
+      ]
+    },
+    {
+      "config": {
+        "search_method": "semantic",
+        "reranking": false,
+        "embedding_model": "all-MiniLM-L6-v2",
+        "chunking": "fixed 500 words / 75 overlap"
+      },
+      "corpus_version": "2",
+      "counts": {
+        "questions_total": 31,
+        "questions_scored": 26,
+        "chunks_indexed": 15
+      },
+      "indexing": {
+        "seconds": 2.03,
+        "storage_kb": 52.0,
+        "chunks_over_model_limit_pct": 86.7
+      },
+      "metrics": {
+        "recall_at_5": 0.962,
+        "mrr_at_10": 0.901,
+        "evidence_intactness": 1.0,
+        "recall_at_5_by_category": {
+          "direct": 1.0,
+          "numerical": 1.0,
+          "multi_document": 0.8,
+          "multi_section": 1.0,
+          "adversarial": 1.0
+        },
+        "retrieval_latency_ms": {
+          "p50": 28.7,
+          "p95": 34.7
+        }
+      },
+      "failed_questions": [
+        {
+          "id": "M03",
+          "category": "multi_document",
+          "recall_at_5": 0.0,
+          "reciprocal_rank_at_10": 0.1,
+          "top_5": [
+            "expense_policy_v3.pdf p3",
+            "expense_policy_v3.pdf p2",
+            "cobalt_harbor_2024.pdf p2",
+            "northwind_robotics_2024.pdf p4",
+            "northwind_robotics_2024.pdf p2"
+          ]
+        }
+      ]
+    },
+    {
+      "config": {
+        "search_method": "semantic",
+        "reranking": false,
+        "embedding_model": "all-MiniLM-L6-v2",
+        "chunking": "paragraph 150 words / 30 overlap"
+      },
+      "corpus_version": "2",
+      "counts": {
+        "questions_total": 31,
+        "questions_scored": 26,
+        "chunks_indexed": 27
+      },
+      "indexing": {
+        "seconds": 2.79,
+        "storage_kb": 74.3,
+        "chunks_over_model_limit_pct": 0.0
+      },
+      "metrics": {
+        "recall_at_5": 1.0,
+        "mrr_at_10": 0.87,
+        "evidence_intactness": 1.0,
+        "recall_at_5_by_category": {
+          "direct": 1.0,
+          "numerical": 1.0,
+          "multi_document": 1.0,
+          "multi_section": 1.0,
+          "adversarial": 1.0
+        },
+        "retrieval_latency_ms": {
+          "p50": 28.9,
+          "p95": 31.8
+        }
+      },
+      "failed_questions": []
+    },
+    {
+      "config": {
+        "search_method": "semantic",
+        "reranking": false,
+        "embedding_model": "all-MiniLM-L6-v2",
+        "chunking": "paragraph 300 words / 50 overlap"
+      },
+      "corpus_version": "2",
+      "counts": {
+        "questions_total": 31,
+        "questions_scored": 26,
+        "chunks_indexed": 15
+      },
+      "indexing": {
+        "seconds": 2.45,
+        "storage_kb": 55.3,
+        "chunks_over_model_limit_pct": 73.3
+      },
+      "metrics": {
+        "recall_at_5": 0.962,
+        "mrr_at_10": 0.897,
+        "evidence_intactness": 1.0,
+        "recall_at_5_by_category": {
+          "direct": 1.0,
+          "numerical": 1.0,
+          "multi_document": 0.8,
+          "multi_section": 1.0,
+          "adversarial": 1.0
+        },
+        "retrieval_latency_ms": {
+          "p50": 27.9,
+          "p95": 32.0
+        }
+      },
+      "failed_questions": [
+        {
+          "id": "M03",
+          "category": "multi_document",
+          "recall_at_5": 0.0,
+          "reciprocal_rank_at_10": 0.1111111111111111,
+          "top_5": [
+            "northwind_robotics_2024.pdf p4",
+            "cobalt_harbor_2024.pdf p2",
+            "expense_policy_v3.pdf p2",
+            "northwind_robotics_2024.pdf p2",
+            "northwind_robotics_2024.pdf p1"
+          ]
+        }
+      ]
+    },
+    {
+      "config": {
+        "search_method": "semantic",
+        "reranking": false,
+        "embedding_model": "all-MiniLM-L6-v2",
+        "chunking": "paragraph 500 words / 75 overlap"
+      },
+      "corpus_version": "2",
+      "counts": {
+        "questions_total": 31,
+        "questions_scored": 26,
+        "chunks_indexed": 8
+      },
+      "indexing": {
+        "seconds": 2.02,
+        "storage_kb": 42.4,
+        "chunks_over_model_limit_pct": 87.5
+      },
+      "metrics": {
+        "recall_at_5": 0.974,
+        "mrr_at_10": 0.863,
+        "evidence_intactness": 1.0,
+        "recall_at_5_by_category": {
+          "direct": 1.0,
+          "numerical": 1.0,
+          "multi_document": 0.867,
+          "multi_section": 1.0,
+          "adversarial": 1.0
+        },
+        "retrieval_latency_ms": {
+          "p50": 28.4,
+          "p95": 32.4
+        }
+      },
+      "failed_questions": [
+        {
+          "id": "M01",
+          "category": "multi_document",
+          "recall_at_5": 0.3333333333333333,
+          "reciprocal_rank_at_10": 0.25,
+          "top_5": [
+            "expense_policy_v3.pdf p3",
+            "expense_policy_v3.pdf p1",
+            "northwind_robotics_2024.pdf p2",
+            "lumen_grid_2024.pdf p1",
+            "cobalt_harbor_2024.pdf p2"
+          ]
+        }
+      ]
+    },
+    {
+      "config": {
+        "search_method": "semantic",
+        "reranking": false,
+        "embedding_model": "all-MiniLM-L6-v2",
+        "chunking": "section 150 words / 30 overlap"
+      },
+      "corpus_version": "2",
+      "counts": {
+        "questions_total": 31,
+        "questions_scored": 26,
+        "chunks_indexed": 35
+      },
+      "indexing": {
+        "seconds": 2.12,
+        "storage_kb": 87.9,
+        "chunks_over_model_limit_pct": 0.0
+      },
+      "metrics": {
+        "recall_at_5": 0.942,
+        "mrr_at_10": 0.841,
+        "evidence_intactness": 1.0,
+        "recall_at_5_by_category": {
+          "direct": 1.0,
+          "numerical": 1.0,
+          "multi_document": 0.7,
+          "multi_section": 1.0,
+          "adversarial": 1.0
+        },
+        "retrieval_latency_ms": {
+          "p50": 17.7,
+          "p95": 20.0
+        }
+      },
+      "failed_questions": [
+        {
+          "id": "M02",
+          "category": "multi_document",
+          "recall_at_5": 0.5,
+          "reciprocal_rank_at_10": 1.0,
+          "top_5": [
+            "northwind_robotics_2024.pdf p1",
+            "cobalt_harbor_2024.pdf p1",
+            "northwind_robotics_2024.pdf p1",
+            "northwind_robotics_2024.pdf p2",
+            "northwind_robotics_2024.pdf p4"
+          ]
+        },
+        {
+          "id": "M03",
+          "category": "multi_document",
+          "recall_at_5": 0.0,
+          "reciprocal_rank_at_10": 0.0,
+          "top_5": [
+            "cobalt_harbor_2024.pdf p1",
+            "northwind_robotics_2024.pdf p1",
+            "lumen_grid_2024.pdf p1",
+            "cobalt_harbor_2024.pdf p2",
+            "expense_policy_v3.pdf p1"
+          ]
+        }
+      ]
+    },
+    {
+      "config": {
+        "search_method": "semantic",
+        "reranking": false,
+        "embedding_model": "all-MiniLM-L6-v2",
+        "chunking": "section 300 words / 50 overlap"
+      },
+      "corpus_version": "2",
+      "counts": {
+        "questions_total": 31,
+        "questions_scored": 26,
+        "chunks_indexed": 23
+      },
+      "indexing": {
+        "seconds": 1.88,
+        "storage_kb": 66.6,
+        "chunks_over_model_limit_pct": 30.4
+      },
+      "metrics": {
+        "recall_at_5": 0.942,
+        "mrr_at_10": 0.756,
+        "evidence_intactness": 1.0,
+        "recall_at_5_by_category": {
+          "direct": 1.0,
+          "numerical": 1.0,
+          "multi_document": 0.7,
+          "multi_section": 1.0,
+          "adversarial": 1.0
+        },
+        "retrieval_latency_ms": {
+          "p50": 19.3,
+          "p95": 22.0
+        }
+      },
+      "failed_questions": [
+        {
+          "id": "M02",
+          "category": "multi_document",
+          "recall_at_5": 0.5,
+          "reciprocal_rank_at_10": 1.0,
+          "top_5": [
+            "northwind_robotics_2024.pdf p1",
+            "cobalt_harbor_2024.pdf p1",
+            "northwind_robotics_2024.pdf p1",
+            "northwind_robotics_2024.pdf p2",
+            "northwind_robotics_2024.pdf p4"
+          ]
+        },
+        {
+          "id": "M03",
+          "category": "multi_document",
+          "recall_at_5": 0.0,
+          "reciprocal_rank_at_10": 0.0,
+          "top_5": [
+            "cobalt_harbor_2024.pdf p1",
+            "northwind_robotics_2024.pdf p1",
+            "lumen_grid_2024.pdf p1",
+            "northwind_robotics_2024.pdf p4",
+            "cobalt_harbor_2024.pdf p2"
+          ]
+        }
+      ]
+    },
+    {
+      "config": {
+        "search_method": "semantic",
+        "reranking": false,
+        "embedding_model": "all-MiniLM-L6-v2",
+        "chunking": "section 500 words / 75 overlap"
+      },
+      "corpus_version": "2",
+      "counts": {
+        "questions_total": 31,
+        "questions_scored": 26,
+        "chunks_indexed": 23
+      },
+      "indexing": {
+        "seconds": 1.8,
+        "storage_kb": 66.6,
+        "chunks_over_model_limit_pct": 30.4
+      },
+      "metrics": {
+        "recall_at_5": 0.942,
+        "mrr_at_10": 0.756,
+        "evidence_intactness": 1.0,
+        "recall_at_5_by_category": {
+          "direct": 1.0,
+          "numerical": 1.0,
+          "multi_document": 0.7,
+          "multi_section": 1.0,
+          "adversarial": 1.0
+        },
+        "retrieval_latency_ms": {
+          "p50": 17.1,
+          "p95": 18.7
+        }
+      },
+      "failed_questions": [
+        {
+          "id": "M02",
+          "category": "multi_document",
+          "recall_at_5": 0.5,
+          "reciprocal_rank_at_10": 1.0,
+          "top_5": [
+            "northwind_robotics_2024.pdf p1",
+            "cobalt_harbor_2024.pdf p1",
+            "northwind_robotics_2024.pdf p1",
+            "northwind_robotics_2024.pdf p2",
+            "northwind_robotics_2024.pdf p4"
+          ]
+        },
+        {
+          "id": "M03",
+          "category": "multi_document",
+          "recall_at_5": 0.0,
+          "reciprocal_rank_at_10": 0.0,
+          "top_5": [
+            "cobalt_harbor_2024.pdf p1",
+            "northwind_robotics_2024.pdf p1",
+            "lumen_grid_2024.pdf p1",
+            "northwind_robotics_2024.pdf p4",
+            "cobalt_harbor_2024.pdf p2"
+          ]
+        }
+      ]
+    }
+  ]
+}

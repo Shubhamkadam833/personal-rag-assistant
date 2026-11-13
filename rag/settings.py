@@ -14,7 +14,7 @@ import os
 EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 EMBEDDING_BATCH_SIZE = 32
 
-CHUNK_STRATEGY = "fixed"  # "fixed" | "paragraph" | "section" — see docs/chunking.md
+CHUNK_STRATEGY = "paragraph"  # "fixed" | "paragraph" | "section" — see docs/chunking.md
 CHUNK_SIZE = 150          # words
 CHUNK_OVERLAP = 30        # words, must be smaller than CHUNK_SIZE
 
