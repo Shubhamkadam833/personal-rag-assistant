@@ -19,7 +19,9 @@ LOADING FROM DISK FIRST:
 
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAME = "all-MiniLM-L6-v2"
+from rag import settings
+
+MODEL_NAME = settings.EMBEDDING_MODEL
 
 # Module-level singleton so we only load the model once
 _model: SentenceTransformer | None = None
@@ -40,11 +42,17 @@ def get_model() -> SentenceTransformer:
     return _model
 
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Convert a list of strings into a list of embedding vectors."""
+def embed_texts(texts: list[str], batch_size: int = settings.EMBEDDING_BATCH_SIZE) -> list[list[float]]:
+    """Convert a list of strings into embedding vectors, `batch_size` at a time."""
     model = get_model()
-    vectors = model.encode(texts, show_progress_bar=False)
+    vectors = model.encode(texts, batch_size=batch_size, show_progress_bar=False)
     return vectors.tolist()
+
+
+def model_limits() -> tuple[int, int]:
+    """(vector size, max tokens read per chunk) of the configured model."""
+    model = get_model()
+    return model.get_sentence_embedding_dimension(), model.max_seq_length
 
 
 def embed_query(query: str) -> list[float]:

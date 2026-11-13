@@ -8,10 +8,23 @@ No API call is made: the approval is never approved in this test.
 import sys
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
 APP = str(Path(__file__).parent.parent / "app.py")
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from rag import document_registry, vector_store
+
+
+@pytest.fixture(autouse=True)
+def temp_index(tmp_path, monkeypatch):
+    # Never depend on (or touch) the real data folder.
+    monkeypatch.setattr(vector_store, "STORE_DIR", tmp_path)
+    monkeypatch.setattr(vector_store, "EMBEDDINGS_FILE", tmp_path / "embeddings.npy")
+    monkeypatch.setattr(vector_store, "METADATA_FILE", tmp_path / "metadata.json")
+    monkeypatch.setattr(document_registry, "STORE_DIR", tmp_path)
+    monkeypatch.setattr(document_registry, "REGISTRY_FILE", tmp_path / "documents.json")
 
 
 def test_clear_chat_discards_pending_approval():
