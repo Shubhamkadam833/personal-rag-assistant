@@ -66,14 +66,17 @@ def extract_pages_with_timeout(
             f"'{doc_name}' took too long to process (over {timeout_seconds}s) and was stopped."
         )
 
+    # The result is the last line; anything before it is MuPDF's own messages.
+    lines = completed.stdout.strip().splitlines()
+    mupdf_messages = "\n".join(lines[:-1])
     try:
-        result = json.loads(completed.stdout)
-    except json.JSONDecodeError:
-        # Crash or unexpected output. stderr may hold paths: log it, don't show it.
-        logger.warning("PDF worker crashed for %s:\n%s", doc_name, completed.stderr[-2000:])
+        result = json.loads(lines[-1])
+    except (IndexError, json.JSONDecodeError):
+        # Crash or unexpected output. It may hold paths: log it, don't show it.
+        logger.warning("PDF worker crashed for %s:\n%s\n%s", doc_name, completed.stdout[-1000:], completed.stderr[-2000:])
         raise PDFValidationError(f"'{doc_name}' could not be processed.")
 
     if not result.get("ok"):
-        logger.warning("PDF extraction failed for %s: %s", doc_name, completed.stderr.strip()[-500:])
+        logger.warning("PDF extraction failed for %s: %s %s", doc_name, mupdf_messages[-500:], completed.stderr.strip()[-500:])
         raise PDFValidationError(result.get("error") or f"'{doc_name}' could not be processed.")
     return result["pages"]
