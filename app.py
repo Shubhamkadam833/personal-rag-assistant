@@ -105,7 +105,12 @@ with st.sidebar:
     except vector_store.IndexOutdatedError as e:
         # Searching would mix vectors from two setups. Rebuild from the stored
         # PDFs instead; nothing is uploaded again or deleted.
-        st.warning(f"The search settings changed ({e}). Re-index your documents to keep using them.")
+        # Informational, not a warning: this is a routine one-time step, not a fault.
+        st.info(
+            "**One-time update needed.** Your documents were indexed with different search "
+            f"settings ({e}). Click **Re-index documents**: it re-reads your stored PDFs, "
+            "takes a few seconds, and deletes nothing."
+        )
         if st.button("Re-index documents", key="reindex"):
             with st.spinner("Re-indexing your documents…"):
                 report = reindex_all(UPLOAD_DIR)

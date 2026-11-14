@@ -36,7 +36,8 @@ def test_outdated_index_offers_reindex_and_reports_missing_files(temp_index):
 
     at = AppTest.from_file(APP, default_timeout=120).run()
     assert not at.exception
-    assert any("settings changed" in w.value for w in at.warning)
+    assert any("One-time update needed" in i.value for i in at.info)
+    assert not at.warning and not at.error, "a routine step must not look like a fault"
 
     at.button(key="reindex").click().run()
     shown = [s.value for s in at.success]
