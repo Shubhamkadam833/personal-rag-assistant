@@ -30,13 +30,65 @@ from typing import BinaryIO, Callable
 
 import numpy as np
 
+from rag import settings
+
 STORE_DIR = Path(__file__).parent.parent / "data" / "chroma_db"
 EMBEDDINGS_FILE = STORE_DIR / "embeddings.npy"
 METADATA_FILE = STORE_DIR / "metadata.json"
 
 
+def _manifest_file() -> Path:
+    # Next to the metadata file, so pointing METADATA_FILE elsewhere (tests,
+    # the benchmark) moves the manifest with it.
+    return METADATA_FILE.with_name("manifest.json")
+
+
 class IndexDamagedError(RuntimeError):
     """Index files exist but can't be trusted (unreadable, or out of sync)."""
+
+
+class IndexOutdatedError(RuntimeError):
+    """The index was built with a different model or chunk settings; re-index before using it."""
+
+
+def expected_manifest(dimension: int | None) -> dict:
+    """What the manifest of an index built with today's settings looks like."""
+    return {
+        "format": settings.INDEX_FORMAT,
+        "embedding_model": settings.EMBEDDING_MODEL,
+        "dimension": dimension,
+        "chunking": {"strategy": settings.CHUNK_STRATEGY, "size": settings.CHUNK_SIZE,
+                     "overlap": settings.CHUNK_OVERLAP},
+    }
+
+
+def read_manifest() -> dict | None:
+    if not _manifest_file().exists():
+        return None
+    try:
+        return json.loads(_manifest_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise IndexDamagedError("the index manifest can't be read") from e
+
+
+def check_compatible() -> None:
+    """
+    Raise IndexOutdatedError if the stored index was built with other settings
+    (or before settings were recorded), IndexDamagedError if its vectors don't
+    match its own manifest. An empty index is always compatible.
+    """
+    embeddings, metadata = _load()
+    if not metadata:
+        return
+    manifest = read_manifest()
+    if manifest is None:
+        raise IndexOutdatedError("the index was built before its settings were recorded")
+    if embeddings.shape[1] != manifest.get("dimension"):
+        raise IndexDamagedError(f"vectors have size {embeddings.shape[1]}, the manifest says {manifest.get('dimension')}")
+    want = expected_manifest(manifest["dimension"])
+    changed = [k for k in want if manifest.get(k) != want[k]]
+    if changed:
+        raise IndexOutdatedError(f"index settings changed: {', '.join(changed)}")
 
 
 def write_atomic(path: Path, write: Callable[[BinaryIO], object]) -> None:
@@ -81,7 +133,7 @@ def _load() -> tuple[np.ndarray, list[dict]]:
 
 def _read() -> tuple[np.ndarray, list[dict]]:
     if not EMBEDDINGS_FILE.exists() and not METADATA_FILE.exists():
-        return np.empty((0, 384), dtype=np.float32), []
+        return np.empty((0, 0), dtype=np.float32), []
     try:
         embeddings = np.load(str(EMBEDDINGS_FILE))
         metadata = json.loads(METADATA_FILE.read_text(encoding="utf-8"))
@@ -92,12 +144,15 @@ def _read() -> tuple[np.ndarray, list[dict]]:
     return embeddings, metadata
 
 
-def _save(embeddings: np.ndarray, metadata: list[dict]) -> None:
+def _save(embeddings: np.ndarray, metadata: list[dict], manifest: dict | None = None) -> None:
+    """Save the index; write `manifest` too if given (otherwise the existing one is kept)."""
     STORE_DIR.mkdir(parents=True, exist_ok=True)
     # Each file is swapped in whole. The two can't change in one step, so a crash
     # between them is still possible; _load's count check reports it as damaged.
     write_atomic(EMBEDDINGS_FILE, lambda f: np.save(f, embeddings))
     write_atomic(METADATA_FILE, lambda f: f.write(json.dumps(metadata, ensure_ascii=False).encode("utf-8")))
+    if manifest is not None:  # last, so it never describes vectors that weren't written
+        write_atomic(_manifest_file(), lambda f: f.write(json.dumps(manifest, indent=2).encode("utf-8")))
 
 
 def _chunk_hash(doc_id: str | None, page: int, position: int, text: str) -> str:
@@ -116,29 +171,48 @@ def add_chunks(chunks: list[dict], embeddings: list[list[float]]) -> int:
     existed simply don't have the key; that is the legacy case retriever.py
     treats as unclassified.
     """
+    check_compatible()  # never add vectors to an index built with other settings
     existing_vecs, existing_meta = _load()
-    existing_hashes = {m["hash"] for m in existing_meta}
-
-    new_vecs, new_meta = [], []
-    for position, (chunk, vec) in enumerate(zip(chunks, embeddings)):
-        h = _chunk_hash(chunk.get("doc_id"), chunk["page"], position, chunk["text"])
-        if h not in existing_hashes:
-            existing_hashes.add(h)
-            new_vecs.append(vec)
-            new_meta.append({
-                "hash": h,
-                "doc_id": chunk.get("doc_id"),
-                "doc_name": chunk["doc_name"],
-                "page": chunk["page"],
-                "text": chunk["text"],
-            })
+    new_vecs, new_meta = _entries(chunks, embeddings, {m["hash"] for m in existing_meta})
 
     if new_vecs:
         new_matrix = np.array(new_vecs, dtype=np.float32)
-        combined = np.vstack([existing_vecs, new_matrix]) if existing_vecs.shape[0] > 0 else new_matrix
-        _save(combined, existing_meta + new_meta)
+        if existing_meta and new_matrix.shape[1] != existing_vecs.shape[1]:
+            raise IndexOutdatedError(f"new vectors have size {new_matrix.shape[1]}, the index uses {existing_vecs.shape[1]}")
+        combined = np.vstack([existing_vecs, new_matrix]) if existing_meta else new_matrix
+        _save(combined, existing_meta + new_meta, expected_manifest(new_matrix.shape[1]))
 
     return len(new_vecs)
+
+
+def replace_all(chunks: list[dict], embeddings: list[list[float]]) -> int:
+    """Replace the whole index with these chunks, stamped with today's settings. Used by re-indexing."""
+    vecs, meta = _entries(chunks, embeddings, set())
+    matrix = np.array(vecs, dtype=np.float32) if vecs else np.empty((0, 0), dtype=np.float32)
+    _save(matrix, meta, expected_manifest(matrix.shape[1] if vecs else None))
+    return len(meta)
+
+
+def _entries(chunks: list[dict], embeddings: list[list[float]], known: set[str]) -> tuple[list, list[dict]]:
+    """Metadata entries for chunks whose fingerprint isn't in `known` (duplicates skipped)."""
+    vecs, meta = [], []
+    for position, (chunk, vec) in enumerate(zip(chunks, embeddings)):
+        position = chunk.get("position", position)
+        h = _chunk_hash(chunk.get("doc_id"), chunk["page"], position, chunk["text"])
+        if h in known:
+            continue
+        known.add(h)
+        vecs.append(vec)
+        meta.append({
+            "hash": h,  # stable chunk ID
+            "doc_id": chunk.get("doc_id"),
+            "doc_name": chunk["doc_name"],
+            "page": chunk["page"],
+            "pages": chunk.get("pages", [chunk["page"]]),
+            "section": chunk.get("section", ""),
+            "text": chunk["text"],
+        })
+    return vecs, meta
 
 
 def search(query_embedding: list[float], top_k: int = 5, *, allowed_doc_ids: set[str]) -> list[dict]:
@@ -151,6 +225,7 @@ def search(query_embedding: list[float], top_k: int = 5, *, allowed_doc_ids: set
     returned nor push allowed ones out of the top_k. The argument is required
     so no caller can search everything by accident.
     """
+    check_compatible()  # never compare a query against vectors from another setup
     embeddings, metadata = _load()
     candidates = np.flatnonzero([m.get("doc_id") in allowed_doc_ids for m in metadata])
     if candidates.size == 0:
@@ -178,6 +253,9 @@ def search(query_embedding: list[float], top_k: int = 5, *, allowed_doc_ids: set
             "doc_id": m.get("doc_id"),
             "doc_name": m["doc_name"],
             "page": m["page"],
+            "pages": m.get("pages", [m["page"]]),
+            "section": m.get("section", ""),
+            "chunk_id": m["hash"],
             "distance": float(1 - similarities[idx]),
         })
     return results
@@ -211,9 +289,8 @@ def remove_document(doc_id: str) -> int:
     removed = len(metadata) - len(keep_indices)
 
     if removed > 0:
-        new_embeddings = embeddings[keep_indices] if keep_indices else np.empty((0, 384), dtype=np.float32)
-        new_metadata = [metadata[i] for i in keep_indices]
-        _save(new_embeddings, new_metadata)
+        # Keeps the existing manifest: removing chunks doesn't change how the rest were built.
+        _save(embeddings[keep_indices], [metadata[i] for i in keep_indices])
 
     return removed
 
@@ -238,5 +315,6 @@ def clear_all() -> int:
 
     EMBEDDINGS_FILE.unlink(missing_ok=True)
     METADATA_FILE.unlink(missing_ok=True)
+    _manifest_file().unlink(missing_ok=True)
 
     return removed

@@ -12,11 +12,13 @@ and each page carries generic filler so a page splits into several chunks —
 otherwise retrieval would be trivially easy.
 """
 
+import html
 from pathlib import Path
 
 import fitz  # PyMuPDF
 
-CORPUS_VERSION = "1"
+CORPUS_VERSION = "2"
+_CSS = "* {font-family: sans-serif; font-size: 10pt;} h3 {font-size: 13pt; font-weight: bold; margin: 6pt 0 2pt 0;}"
 
 _FILLER = [
     "{name} continued to invest in its people and processes during the year. "
@@ -122,15 +124,44 @@ DOCUMENTS: dict[str, list[str]] = {
 }
 
 
-def build_corpus(out_dir: Path) -> list[Path]:
-    """Write every synthetic PDF into `out_dir`. Returns the file paths."""
+def _html(text: str) -> str:
+    """Version 2 layout: a short title line, or a short lead like "Principal risks.", becomes a bold heading."""
+    parts = []
+    for para in text.split("\n\n"):
+        first, _, rest = para.partition("\n")
+        lead, _, body = para.partition(". ")
+        if len(first.split()) <= 12 and not first.rstrip().endswith("."):
+            heading, body = first, rest
+        elif len(lead.split()) <= 3 and "\n" not in lead:
+            heading = lead
+        else:
+            heading, body = "", para
+        if heading:
+            parts.append(f"<h3>{html.escape(heading.strip())}</h3>")
+        if body.strip():
+            parts.append("<p>" + "<br>".join(html.escape(ln) for ln in body.strip().split("\n")) + "</p>")
+    return "".join(parts)
+
+
+def build_corpus(out_dir: Path, version: int = 2) -> list[Path]:
+    """
+    Write every synthetic PDF into `out_dir`. Returns the file paths.
+
+    Version 1 (Phase 1 baseline) is plain 10pt text with no visible structure.
+    Version 2 has the same words on the same pages, with headings in bold 13pt,
+    so heading-aware chunking can be measured.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     for filename, pages in DOCUMENTS.items():
         doc = fitz.open()
         for text in pages:
             page = doc.new_page()
-            overflow = page.insert_textbox(fitz.Rect(50, 50, 545, 800), text, fontsize=10)
+            box = fitz.Rect(50, 50, 545, 800)
+            if version == 1:
+                overflow = page.insert_textbox(box, text, fontsize=10)
+            else:
+                overflow, _ = page.insert_htmlbox(box, _html(text), scale_low=1, css=_CSS)
             if overflow < 0:
                 raise ValueError(f"Text overflowed a page in {filename}")
         path = out_dir / filename

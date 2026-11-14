@@ -76,7 +76,7 @@ def test_rebuild_works_on_a_damaged_index(temp_index):
 def test_saving_leaves_no_temp_files(temp_index):
     vector_store.add_chunks([_chunk("v1", "alpha")], VEC)
     document_registry.add("v1", "report.pdf", "public", "x.pdf")
-    assert sorted(p.name for p in temp_index.iterdir()) == ["documents.json", "embeddings.npy", "metadata.json"]
+    assert sorted(p.name for p in temp_index.iterdir()) == ["documents.json", "embeddings.npy", "manifest.json", "metadata.json"]
 
 
 def test_damaged_registry_reports_damage_and_can_be_cleared(temp_index):

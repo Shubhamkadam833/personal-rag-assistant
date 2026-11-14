@@ -26,7 +26,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 import truststore
 truststore.inject_into_ssl()
 
-from rag.text_chunker import chunk_pages
+from rag import settings
+from rag.reindex import reindex_all
+from rag.text_chunker import chunk_document
 from rag.embeddings import embed_texts
 from rag import vector_store
 from rag import document_registry
@@ -90,6 +92,7 @@ with st.sidebar:
     try:
         vector_store.total_chunks()
         document_registry.list_all()
+        vector_store.check_compatible()
     except vector_store.IndexDamagedError:
         st.error(
             "The search index is damaged, probably by an interrupted save. "
@@ -97,6 +100,22 @@ with st.sidebar:
         )
         if st.button("Rebuild index", key="rebuild_damaged"):
             _rebuild_index()
+            st.rerun()
+        st.stop()
+    except vector_store.IndexOutdatedError as e:
+        # Searching would mix vectors from two setups. Rebuild from the stored
+        # PDFs instead; nothing is uploaded again or deleted.
+        st.warning(f"The search settings changed ({e}). Re-index your documents to keep using them.")
+        if st.button("Re-index documents", key="reindex"):
+            with st.spinner("Re-indexing your documents…"):
+                report = reindex_all(UPLOAD_DIR)
+            message = (f"Re-indexed {report['documents']} document(s): {report['chunks']} chunks "
+                       f"({report['reused']} reused, {report['embedded']} newly embedded).")
+            if report["missing"]:
+                message += f" Stored file missing, please re-upload: {', '.join(report['missing'])}."
+            if report["dropped_legacy"]:
+                message += f" {report['dropped_legacy']} chunk(s) from before document IDs were dropped; re-upload those files."
+            st.session_state["flash"] = message
             st.rerun()
         st.stop()
 
@@ -172,7 +191,7 @@ with st.sidebar:
                             # Extraction runs in an isolated, time-limited
                             # process — see security/pdf_sandbox.py.
                             pages = extract_pages_with_timeout(save_path, display_name)
-                            chunks = chunk_pages(pages, chunk_size=150, overlap=30)
+                            chunks = chunk_document(pages, settings.CHUNK_STRATEGY, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
 
                             # Sanitize text and scan for injection phrasing
                             # BEFORE it is ever placed in a prompt or stored.
