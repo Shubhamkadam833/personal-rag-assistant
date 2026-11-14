@@ -9,9 +9,8 @@ __pycache__/
 venv/
 *.egg-info/
 
-# App data - keep documents and embeddings local
-data/uploads/
-data/chroma_db/
+# App data - keep documents, embeddings and their backups local
+data/
 
 # Editors
 .vscode/
