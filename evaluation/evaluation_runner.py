@@ -81,19 +81,20 @@ def _git_commit() -> str:
         return "unknown"
 
 
-def run(strategy: str = "fixed", size: int = 150, overlap: int = 30, corpus_version: int = 2) -> dict:
+def run(strategy: str = "fixed", size: int = 150, overlap: int = 30, corpus_version: int = 2,
+        mode: str = "semantic") -> dict:
     dataset = json.loads(DATASET.read_text(encoding="utf-8"))
     answerable = [q for q in dataset["questions"] if q["evidence"]]
     saved = (settings.CHUNK_STRATEGY, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
     # The run's chunk settings, so the index manifest describes what was built.
     settings.CHUNK_STRATEGY, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP = strategy, size, overlap
     try:
-        return _run(dataset, answerable, strategy, size, overlap, corpus_version)
+        return _run(dataset, answerable, strategy, size, overlap, corpus_version, mode)
     finally:
         settings.CHUNK_STRATEGY, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP = saved
 
 
-def _run(dataset, answerable, strategy, size, overlap, corpus_version) -> dict:
+def _run(dataset, answerable, strategy, size, overlap, corpus_version, mode) -> dict:
     embed_texts(["warm-up"])  # load the model before timing indexing
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -108,13 +109,13 @@ def _run(dataset, answerable, strategy, size, overlap, corpus_version) -> dict:
         tokenizer, limit = get_model().tokenizer, get_model().max_seq_length
         over_limit = sum(len(tokenizer(c["text"])["input_ids"]) > limit for c in all_chunks)
 
-        retrieve("warm-up query", top_k=10)  # loads the embedding model; not timed
+        retrieve("warm-up query", top_k=10, mode=mode)  # loads the embedding model; not timed
 
         per_question = []
         latencies = []
         for q in answerable:
             start = time.perf_counter()
-            results = retrieve(q["question"], top_k=10)
+            results = retrieve(q["question"], top_k=10, mode=mode)
             latencies.append((time.perf_counter() - start) * 1000)
             per_question.append({
                 "id": q["id"],
@@ -135,7 +136,7 @@ def _run(dataset, answerable, strategy, size, overlap, corpus_version) -> dict:
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "git_commit": _git_commit(),
         "config": {
-            "search_method": "semantic",
+            "search_method": mode,
             "reranking": False,
             "embedding_model": MODEL_NAME,
             "chunking": f"{strategy} {size} words / {overlap} overlap",
@@ -177,13 +178,22 @@ def sweep() -> dict:
             "runs": [{k: r[k] for k in keep} for r in rows]}
 
 
+def compare_modes(corpus_version: int = 2) -> dict:
+    """Every search mode on the same corpus, chunking and questions (Phase 3)."""
+    rows = [run(settings.CHUNK_STRATEGY, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP, corpus_version, mode)
+            for mode in settings.SEARCH_MODES]
+    keep = ("config", "corpus_version", "counts", "indexing", "metrics", "failed_questions", "per_question")
+    return {"timestamp": rows[0]["timestamp"], "git_commit": rows[0]["git_commit"],
+            "runs": [{k: r[k] for k in keep} for r in rows]}
+
+
 def _table(result: dict) -> str:
-    lines = ["| Corpus | Chunking | Chunks | Over model limit | Index s | Storage KB | Recall@5 | MRR@10 | p50 / p95 ms |",
-             "|---|---|---|---|---|---|---|---|---|"]
+    lines = ["| Corpus | Search | Chunking | Chunks | Over model limit | Index s | Storage KB | Recall@5 | MRR@10 | p50 / p95 ms |",
+             "|---|---|---|---|---|---|---|---|---|---|"]
     for r in result["runs"]:
         m, i = r["metrics"], r["indexing"]
         lat = m["retrieval_latency_ms"]
-        lines.append(f"| v{r['corpus_version']} | {r['config']['chunking']} | {r['counts']['chunks_indexed']} | "
+        lines.append(f"| v{r['corpus_version']} | {r['config']['search_method']} | {r['config']['chunking']} | {r['counts']['chunks_indexed']} | "
                      f"{i['chunks_over_model_limit_pct']}% | {i['seconds']} | {i['storage_kb']} | "
                      f"{m['recall_at_5']} | {m['mrr_at_10']} | {lat['p50']} / {lat['p95']} |")
     return "\n".join(lines)
@@ -197,18 +207,20 @@ def main() -> None:
     parser.add_argument("--overlap", type=int, default=settings.CHUNK_OVERLAP)
     parser.add_argument("--corpus", type=int, choices=(1, 2), default=2)
     parser.add_argument("--sweep", action="store_true", help="run every strategy and size; writes phase2_sweep.json")
+    parser.add_argument("--modes", action="store_true", help="run every search mode; writes phase3_search_modes.json")
+    parser.add_argument("--mode", choices=settings.SEARCH_MODES, default=settings.SEARCH_MODE)
     args = parser.parse_args()
 
     RESULTS_DIR.mkdir(exist_ok=True)
-    if args.sweep:
-        result = sweep()
-        out = RESULTS_DIR / f"{args.name or 'phase2_sweep'}.json"
+    if args.sweep or args.modes:
+        result = sweep() if args.sweep else compare_modes(args.corpus)
+        out = RESULTS_DIR / f"{args.name or ('phase2_sweep' if args.sweep else 'phase3_search_modes')}.json"
         out.write_text(json.dumps(result, indent=2), encoding="utf-8")
         print(_table(result))
         print(f"Saved {out}")
         return
 
-    report = run(args.strategy, args.size, args.overlap, args.corpus)
+    report = run(args.strategy, args.size, args.overlap, args.corpus, args.mode)
     name = args.name or report["timestamp"].replace(":", "-")
     out = RESULTS_DIR / f"{name}.json"
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
