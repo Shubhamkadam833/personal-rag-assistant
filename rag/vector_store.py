@@ -245,20 +245,20 @@ def search(query_embedding: list[float], top_k: int = 5, *, allowed_doc_ids: set
 
     top_indices = candidates[np.argsort(sims)[::-1][:top_k]]
 
-    results = []
-    for idx in top_indices:
-        m = metadata[idx]
-        results.append({
-            "text": m["text"],
-            "doc_id": m.get("doc_id"),
-            "doc_name": m["doc_name"],
-            "page": m["page"],
-            "pages": m.get("pages", [m["page"]]),
-            "section": m.get("section", ""),
-            "chunk_id": m["hash"],
-            "distance": float(1 - similarities[idx]),
-        })
-    return results
+    return [{**result_fields(metadata[idx]), "distance": float(1 - similarities[idx])} for idx in top_indices]
+
+
+def result_fields(m: dict) -> dict:
+    """The fields every search result carries, copied from one metadata entry."""
+    return {
+        "text": m["text"],
+        "doc_id": m.get("doc_id"),
+        "doc_name": m["doc_name"],
+        "page": m["page"],
+        "pages": m.get("pages", [m["page"]]),
+        "section": m.get("section", ""),
+        "chunk_id": m["hash"],
+    }
 
 
 def list_documents() -> list[dict]:

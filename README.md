@@ -8,7 +8,7 @@ A local RAG (retrieval-augmented generation) app: upload PDFs, ask questions in 
 2. **Chunk** — text is split into ~150-word chunks along paragraph boundaries, keeping table rows and headings with their text (strategies and settings: `docs/chunking.md`).
 3. **Embed** — each chunk is embedded locally with `all-MiniLM-L6-v2` (`sentence-transformers`) — no API call, no cost.
 4. **Store** — vectors and metadata are saved to disk as a `.npy` file + JSON (`rag/vector_store.py`), with simple cosine-similarity search. No external vector database.
-5. **Ask** — a question is embedded, the top-k most similar chunks are retrieved, and sent to Claude (`claude-sonnet-5-5`) along with the question and recent conversation history. Claude is instructed to answer only from the provided excerpts and cite document + page.
+5. **Ask** — the top chunks are found by **hybrid search**: semantic search (meaning) and BM25 keyword search (exact words, names, numbers), merged with Reciprocal Rank Fusion (`docs/search_modes.md`). They are sent to Claude (`claude-sonnet-5-5`) along with the question and recent conversation history. Claude is instructed to answer only from the provided excerpts and cite document + page.
 6. **Follow-ups** — a question like "what about the prior year?" is first rewritten into a standalone question (via Claude Haiku) before retrieval, since the original wording shares no words with the document.
 
 ## Setup
@@ -29,11 +29,12 @@ app.py                    Streamlit UI — upload, chat, document management
 rag/
   pdf_loader.py            Extract text from a PDF, page by page
   text_chunker.py          Fixed, paragraph and section chunking strategies
-  settings.py              Embedding model and chunk settings (one place)
+  settings.py              Embedding model, chunk and search settings (one place)
+  bm25.py                  Keyword search over the stored chunks
   reindex.py               Rebuild the index from stored PDFs after a settings change
   embeddings.py             Local embedding model (sentence-transformers)
   vector_store.py           Disk-backed vector store, cosine similarity search
-  retriever.py               Combines embeddings + vector store into search
+  retriever.py               Search modes (semantic / bm25 / hybrid) + RRF fusion
   query_rewriter.py          Condenses follow-up questions before retrieval
   answer_generator.py       Builds the prompt, calls Claude, extracts the answer
 security/
@@ -48,6 +49,14 @@ data/
 
 ```powershell
 .venv\Scripts\python -m pytest -q
+```
+
+Retrieval benchmark (synthetic PDFs, temp index, no API cost):
+
+```powershell
+.venv\Scripts\python -m evaluation.evaluation_runner           # current settings
+.venv\Scripts\python -m evaluation.evaluation_runner --modes   # compare search modes
+.venv\Scripts\python -m evaluation.evaluation_runner --sweep   # compare chunk settings
 ```
 
 ## Notes

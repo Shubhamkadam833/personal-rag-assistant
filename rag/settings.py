@@ -20,3 +20,11 @@ CHUNK_OVERLAP = 30        # words, must be smaller than CHUNK_SIZE
 
 # Bump when the stored index layout changes, so old indexes are re-built.
 INDEX_FORMAT = 2
+
+# Search settings. Changing these needs NO re-index: they only change how the
+# stored chunks are ranked. Chosen with the Phase 3 benchmark; see
+# docs/phase3_hybrid_search_report.md.
+SEARCH_MODES = ("semantic", "bm25", "hybrid")
+SEARCH_MODE = "hybrid"   # measured best in Phase 3: same recall as semantic, higher MRR
+RRF_K = 60          # standard Reciprocal Rank Fusion constant; larger = flatter
+HYBRID_DEPTH = 20   # how many results each method contributes before fusing
