@@ -12,6 +12,12 @@ METRICS:
   reciprocal rank — 1 / position of the first relevant chunk (0 if none in top k).
                     Averaged over questions, this is MRR: rewards ranking the
                     right chunk first, not just somewhere in the list.
+  precision@k    — share of the top k chunks that are relevant to any evidence
+                    item. With one evidence item usually only one or two chunks
+                    can be relevant, so this stays low by design (max ~0.2-0.4).
+  nDCG@k         — like recall@k, but a hit counts more the higher it sits
+                    (1 / log2(rank + 1)), divided by the best possible score.
+                    Each evidence item is credited once, at its first hit.
   intactness     — does ANY chunk in the index hold the whole phrase? If not,
                     chunking split a label from its value, and no search method
                     can retrieve it in one piece.
@@ -42,6 +48,26 @@ def reciprocal_rank(results: list[dict], evidence: list[dict], k: int = 10) -> f
         if any(is_relevant(chunk, ev) for ev in evidence):
             return 1 / rank
     return 0.0
+
+
+def precision_at_k(results: list[dict], evidence: list[dict], k: int) -> float:
+    top = results[:k]
+    if not top:
+        return 0.0
+    return sum(1 for c in top if any(is_relevant(c, ev) for ev in evidence)) / k
+
+
+def ndcg_at_k(results: list[dict], evidence: list[dict], k: int) -> float:
+    if not evidence:
+        raise ValueError("nDCG is undefined for a question with no evidence")
+    credited, dcg = set(), 0.0
+    for rank, chunk in enumerate(results[:k], start=1):
+        new = {i for i, ev in enumerate(evidence) if i not in credited and is_relevant(chunk, ev)}
+        if new:
+            credited |= new
+            dcg += len(new) / math.log2(rank + 1)
+    ideal = sum(1 / math.log2(r + 1) for r in range(1, min(len(evidence), k) + 1))
+    return dcg / ideal
 
 
 def evidence_intact(all_chunks: list[dict], evidence: dict) -> bool:

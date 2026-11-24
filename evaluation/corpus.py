@@ -17,7 +17,7 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-CORPUS_VERSION = "2"
+CORPUS_VERSION = "3"
 _CSS = "* {font-family: sans-serif; font-size: 10pt;} h3 {font-size: 13pt; font-weight: bold; margin: 6pt 0 2pt 0;}"
 
 _FILLER = [
@@ -124,6 +124,68 @@ DOCUMENTS: dict[str, list[str]] = {
 }
 
 
+# Version 3 adds "trap" documents: the same metric for another year, another
+# company, or a look-alike term (operating income / operating cash flow /
+# operating expenses). Each fact sits on its own page, so the right chunk has
+# to be picked out from near-identical competitors — the case reranking is for.
+TRAP_DOCUMENTS: dict[str, list[str]] = {
+    "northwind_robotics_2023.pdf": _report("Northwind Robotics", [
+        "Northwind Robotics Annual Report - Fiscal Year 2023\n\n"
+        "Company overview. In fiscal year 2023 Northwind Robotics opened a second "
+        "assembly plant in Monterrey, Mexico.",
+        "Research and development. Northwind Robotics recorded research and development "
+        "expense of $38.2 million in fiscal year 2023.",
+        "Order backlog. Northwind Robotics ended fiscal year 2023 with an order backlog "
+        "of $190 million.",
+        "Free cash flow. Northwind Robotics generated free cash flow of $18.1 million "
+        "in fiscal year 2023.",
+    ]),
+    "northwind_robotics_2024_supplement.pdf": _report("Northwind Robotics", [
+        "Northwind Robotics Supplementary Financial Information - Fiscal Year 2024\n\n"
+        "Purpose. This supplement adds detail to the fiscal year 2024 annual report.",
+        "Research and development. Northwind Robotics recorded research and development "
+        "expense of $45.9 million in fiscal year 2024.",
+        "Order backlog. Northwind Robotics ended fiscal year 2024 with an order backlog "
+        "of $236 million.",
+        "Free cash flow. Northwind Robotics generated free cash flow of $29.6 million "
+        "in fiscal year 2024.",
+        "Gross profit. Northwind Robotics reported gross profit of $171.4 million in "
+        "fiscal year 2024.",
+        "Capital expenditure. Northwind Robotics spent $22.8 million on capital "
+        "expenditure in fiscal year 2024.",
+    ]),
+    "cobalt_harbor_2024_supplement.pdf": _report("Cobalt Harbor Logistics", [
+        "Cobalt Harbor Logistics Supplementary Financial Information - Fiscal Year 2024\n\n"
+        "Purpose. This supplement adds detail to the fiscal year 2024 annual report.",
+        "Research and development. Cobalt Harbor Logistics recorded research and "
+        "development expense of $12.4 million in fiscal year 2024.",
+        "Cash flow. Cobalt Harbor Logistics generated operating cash flow of $98.5 "
+        "million in fiscal year 2024.",
+        "Operating expenses. Cobalt Harbor Logistics reported operating expenses of "
+        "$779.2 million in fiscal year 2024.",
+        "Free cash flow. Cobalt Harbor Logistics generated free cash flow of $41.3 "
+        "million in fiscal year 2024.",
+        "Capital expenditure. Cobalt Harbor Logistics spent $57.2 million on capital "
+        "expenditure in fiscal year 2024.",
+    ]),
+    "lumen_grid_2024_supplement.pdf": _report("Lumen Grid Energy", [
+        "Lumen Grid Energy Supplementary Financial Information - Fiscal Year 2024\n\n"
+        "Purpose. This supplement adds detail to the fiscal year 2024 annual report.",
+        "Research and development. Lumen Grid Energy recorded research and development "
+        "expense of $8.7 million in fiscal year 2024.",
+        "Free cash flow. Lumen Grid Energy generated free cash flow of $64.0 million "
+        "in fiscal year 2024.",
+        "Customer accounts. Lumen Grid Energy served 1.42 million customer accounts at "
+        "the end of fiscal year 2024.",
+    ]),
+}
+
+
+def documents(version: int) -> dict[str, list[str]]:
+    """The documents in a corpus version: v3 = v1/v2 documents + trap documents."""
+    return {**DOCUMENTS, **TRAP_DOCUMENTS} if version >= 3 else DOCUMENTS
+
+
 def _html(text: str) -> str:
     """Version 2 layout: a short title line, or a short lead like "Principal risks.", becomes a bold heading."""
     parts = []
@@ -150,10 +212,11 @@ def build_corpus(out_dir: Path, version: int = 2) -> list[Path]:
     Version 1 (Phase 1 baseline) is plain 10pt text with no visible structure.
     Version 2 has the same words on the same pages, with headings in bold 13pt,
     so heading-aware chunking can be measured.
+    Version 3 is version 2 plus the trap documents (same layout).
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = []
-    for filename, pages in DOCUMENTS.items():
+    for filename, pages in documents(version).items():
         doc = fitz.open()
         for text in pages:
             page = doc.new_page()
