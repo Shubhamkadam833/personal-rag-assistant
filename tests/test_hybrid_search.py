@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from rag import bm25, document_registry, retriever, vector_store
+from rag import bm25, document_registry, retriever, settings, vector_store
 
 QUERY = np.ones(384, dtype=np.float32)
 
@@ -24,6 +24,7 @@ def temp_index(tmp_path, monkeypatch):
     monkeypatch.setattr(document_registry, "REGISTRY_FILE", tmp_path / "documents.json")
     monkeypatch.setattr(retriever, "embed_query", lambda q: QUERY.tolist())
     monkeypatch.setattr(bm25, "_cache", None)
+    monkeypatch.setattr(settings, "RERANK_ENABLED", False)  # these test search order itself; see test_reranker.py
     return tmp_path
 
 

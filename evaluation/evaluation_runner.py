@@ -29,11 +29,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from evaluation.corpus import build_corpus
-from evaluation.retrieval_metrics import evidence_intact, percentile, recall_at_k, reciprocal_rank
+from evaluation.retrieval_metrics import (evidence_intact, ndcg_at_k, percentile, precision_at_k, recall_at_k,
+                                          reciprocal_rank)
 from rag import document_registry, settings, vector_store
 from rag.embeddings import MODEL_NAME, embed_texts, get_model
 from rag.pdf_loader import load_pdf
-from rag.retriever import retrieve
+from rag.retriever import retrieve_with_info
 from rag.text_chunker import STRATEGIES, chunk_document
 from security.prompt_guard import sanitize_chunk_text
 
@@ -42,6 +43,7 @@ DATASET = ROOT / "benchmark_dataset.json"
 RESULTS_DIR = ROOT / "results"
 
 SWEEP_SIZES = [(150, 30), (300, 50), (500, 75)]
+POOL = 20  # candidates ranked per question (= settings.RERANK_CANDIDATES default)
 
 
 def _isolate_storage(store_dir: Path) -> None:
@@ -82,19 +84,19 @@ def _git_commit() -> str:
 
 
 def run(strategy: str = "fixed", size: int = 150, overlap: int = 30, corpus_version: int = 2,
-        mode: str = "semantic") -> dict:
+        mode: str = "semantic", rerank: bool = False) -> dict:
     dataset = json.loads(DATASET.read_text(encoding="utf-8"))
-    answerable = [q for q in dataset["questions"] if q["evidence"]]
+    answerable = [q for q in dataset["questions"] if q["evidence"] and q.get("min_corpus", 1) <= corpus_version]
     saved = (settings.CHUNK_STRATEGY, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
     # The run's chunk settings, so the index manifest describes what was built.
     settings.CHUNK_STRATEGY, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP = strategy, size, overlap
     try:
-        return _run(dataset, answerable, strategy, size, overlap, corpus_version, mode)
+        return _run(dataset, answerable, strategy, size, overlap, corpus_version, mode, rerank)
     finally:
         settings.CHUNK_STRATEGY, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP = saved
 
 
-def _run(dataset, answerable, strategy, size, overlap, corpus_version, mode) -> dict:
+def _run(dataset, answerable, strategy, size, overlap, corpus_version, mode, rerank) -> dict:
     embed_texts(["warm-up"])  # load the model before timing indexing
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -109,19 +111,30 @@ def _run(dataset, answerable, strategy, size, overlap, corpus_version, mode) -> 
         tokenizer, limit = get_model().tokenizer, get_model().max_seq_length
         over_limit = sum(len(tokenizer(c["text"])["input_ids"]) > limit for c in all_chunks)
 
-        retrieve("warm-up query", top_k=10, mode=mode)  # loads the embedding model; not timed
+        # Loads the embedding (and reranker) model; not timed.
+        retrieve_with_info("warm-up query", top_k=POOL, mode=mode, rerank=rerank, candidates=POOL)
 
         per_question = []
-        latencies = []
+        latencies, rerank_ms, fallbacks = [], [], []
         for q in answerable:
+            # The whole candidate pool is ranked, so reranking on/off see the
+            # same POOL chunks and only their order differs.
             start = time.perf_counter()
-            results = retrieve(q["question"], top_k=10, mode=mode)
+            results, info = retrieve_with_info(q["question"], top_k=POOL, mode=mode, rerank=rerank, candidates=POOL)
             latencies.append((time.perf_counter() - start) * 1000)
+            rerank_ms.append(info["rerank_ms"])
+            if info["rerank_fallback"]:
+                fallbacks.append(f"{q['id']}: {info['rerank_fallback']}")
             per_question.append({
                 "id": q["id"],
                 "category": q["category"],
                 "recall_at_5": recall_at_k(results, q["evidence"], 5),
                 "reciprocal_rank_at_10": reciprocal_rank(results, q["evidence"], 10),
+                "precision_at_5": precision_at_k(results, q["evidence"], 5),
+                "ndcg_at_5": ndcg_at_k(results, q["evidence"], 5),
+                "pool_recall_at_20": recall_at_k(results, q["evidence"], POOL),
+                # Rough: ~4 characters per token for English text.
+                "est_top5_tokens": sum(len(c["text"]) for c in results[:5]) // 4,
                 "top_5": [f"{c['doc_name']} p{c['page']}" for c in results[:5]],
             })
 
@@ -137,7 +150,7 @@ def _run(dataset, answerable, strategy, size, overlap, corpus_version, mode) -> 
         "git_commit": _git_commit(),
         "config": {
             "search_method": mode,
-            "reranking": False,
+            "reranking": rerank,
             "embedding_model": MODEL_NAME,
             "chunking": f"{strategy} {size} words / {overlap} overlap",
         },
@@ -157,7 +170,14 @@ def _run(dataset, answerable, strategy, size, overlap, corpus_version, mode) -> 
             "recall_at_5": round(statistics.mean(r["recall_at_5"] for r in per_question), 3),
             "mrr_at_10": round(statistics.mean(r["reciprocal_rank_at_10"] for r in per_question), 3),
             "evidence_intactness": round(len(intact) / len(evidence_items), 3),
+            "precision_at_5": round(statistics.mean(r["precision_at_5"] for r in per_question), 3),
+            "ndcg_at_5": round(statistics.mean(r["ndcg_at_5"] for r in per_question), 3),
+            "pool_recall_at_20": round(statistics.mean(r["pool_recall_at_20"] for r in per_question), 3),
+            "est_top5_tokens_mean": round(statistics.mean(r["est_top5_tokens"] for r in per_question)),
             "recall_at_5_by_category": {k: round(statistics.mean(v), 3) for k, v in by_category.items()},
+            "rerank_latency_ms": ({"p50": round(percentile(rerank_ms, 50), 1), "p95": round(percentile(rerank_ms, 95), 1)}
+                                  if rerank else None),
+            "rerank_fallbacks": fallbacks,
             "retrieval_latency_ms": {
                 "p50": round(percentile(latencies, 50), 1),
                 "p95": round(percentile(latencies, 95), 1),
@@ -187,6 +207,49 @@ def compare_modes(corpus_version: int = 2) -> dict:
             "runs": [{k: r[k] for k in keep} for r in rows]}
 
 
+def compare_rerank(corpus_version: int = 3) -> dict:
+    """
+    Phase 4: every search mode with reranking off and on, same corpus,
+    questions and candidate pool. Plus, for hybrid (the default), which
+    questions reranking improved, worsened or left unchanged.
+    """
+    rows = [run(settings.CHUNK_STRATEGY, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP, corpus_version, mode, rerank)
+            for mode in settings.SEARCH_MODES for rerank in (False, True)]
+    keep = ("config", "corpus_version", "counts", "metrics", "failed_questions", "per_question")
+    hybrid_off, hybrid_on = (r for r in rows if r["config"]["search_method"] == "hybrid")
+    return {"timestamp": rows[0]["timestamp"], "git_commit": rows[0]["git_commit"],
+            "runs": [{k: r[k] for k in keep} for r in rows],
+            "hybrid_changes": question_changes(hybrid_off["per_question"], hybrid_on["per_question"])}
+
+
+def question_changes(before: list[dict], after: list[dict]) -> dict:
+    """Per question: did nDCG@5 (then MRR@10) go up, down, or stay the same?"""
+    out = {"improved": [], "worse": [], "unchanged": []}
+    for b, a in zip(before, after):
+        old = (round(b["ndcg_at_5"], 4), round(b["reciprocal_rank_at_10"], 4))
+        new = (round(a["ndcg_at_5"], 4), round(a["reciprocal_rank_at_10"], 4))
+        bucket = "improved" if new > old else "worse" if new < old else "unchanged"
+        out[bucket].append({"id": b["id"], "category": b["category"], "ndcg_at_5": [old[0], new[0]],
+                            "mrr_at_10": [old[1], new[1]], "top_5_before": b["top_5"], "top_5_after": a["top_5"]})
+    return out
+
+
+def _rerank_table(result: dict) -> str:
+    lines = ["| Search | Rerank | Recall@5 | Precision@5 | nDCG@5 | MRR@10 | Pool recall@20 | Search p50/p95 ms | Rerank p50/p95 ms |",
+             "|---|---|---|---|---|---|---|---|---|"]
+    for r in result["runs"]:
+        m = r["metrics"]
+        lat, rr = m["retrieval_latency_ms"], m["rerank_latency_ms"]
+        rerank_cell = f"{rr['p50']} / {rr['p95']}" if rr else "-"
+        lines.append(f"| {r['config']['search_method']} | {'on' if r['config']['reranking'] else 'off'} | "
+                     f"{m['recall_at_5']} | {m['precision_at_5']} | {m['ndcg_at_5']} | {m['mrr_at_10']} | "
+                     f"{m['pool_recall_at_20']} | {lat['p50']} / {lat['p95']} | {rerank_cell} |")
+    ch = result["hybrid_changes"]
+    lines.append(f"\nHybrid, reranking on vs off: {len(ch['improved'])} improved, {len(ch['worse'])} worse, "
+                 f"{len(ch['unchanged'])} unchanged")
+    return "\n".join(lines)
+
+
 def _table(result: dict) -> str:
     lines = ["| Corpus | Search | Chunking | Chunks | Over model limit | Index s | Storage KB | Recall@5 | MRR@10 | p50 / p95 ms |",
              "|---|---|---|---|---|---|---|---|---|---|"]
@@ -205,13 +268,23 @@ def main() -> None:
     parser.add_argument("--strategy", choices=STRATEGIES, default=settings.CHUNK_STRATEGY)
     parser.add_argument("--size", type=int, default=settings.CHUNK_SIZE)
     parser.add_argument("--overlap", type=int, default=settings.CHUNK_OVERLAP)
-    parser.add_argument("--corpus", type=int, choices=(1, 2), default=2)
+    parser.add_argument("--corpus", type=int, choices=(1, 2, 3), default=2)
     parser.add_argument("--sweep", action="store_true", help="run every strategy and size; writes phase2_sweep.json")
     parser.add_argument("--modes", action="store_true", help="run every search mode; writes phase3_search_modes.json")
     parser.add_argument("--mode", choices=settings.SEARCH_MODES, default=settings.SEARCH_MODE)
+    parser.add_argument("--rerank", action="store_true", help="rerank the candidate pool (single run)")
+    parser.add_argument("--rerank-compare", action="store_true",
+                        help="every mode with reranking off/on on corpus v3; writes phase4_rerank.json")
     args = parser.parse_args()
 
     RESULTS_DIR.mkdir(exist_ok=True)
+    if args.rerank_compare:
+        result = compare_rerank()
+        out = RESULTS_DIR / f"{args.name or 'phase4_rerank'}.json"
+        out.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        print(_rerank_table(result))
+        print(f"Saved {out}")
+        return
     if args.sweep or args.modes:
         result = sweep() if args.sweep else compare_modes(args.corpus)
         out = RESULTS_DIR / f"{args.name or ('phase2_sweep' if args.sweep else 'phase3_search_modes')}.json"
@@ -220,7 +293,7 @@ def main() -> None:
         print(f"Saved {out}")
         return
 
-    report = run(args.strategy, args.size, args.overlap, args.corpus, args.mode)
+    report = run(args.strategy, args.size, args.overlap, args.corpus, args.mode, args.rerank)
     name = args.name or report["timestamp"].replace(":", "-")
     out = RESULTS_DIR / f"{name}.json"
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")

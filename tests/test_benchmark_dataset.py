@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from evaluation.corpus import DOCUMENTS, build_corpus
+from evaluation.corpus import build_corpus, documents
 from evaluation.retrieval_metrics import normalize
 from rag.pdf_loader import load_pdf
 
@@ -24,7 +24,7 @@ QUESTIONS = DATASET["questions"]
 def page_text(tmp_path_factory):
     """{(doc, page): extracted text} for the generated corpus."""
     out = {}
-    for path in build_corpus(tmp_path_factory.mktemp("corpus")):
+    for path in build_corpus(tmp_path_factory.mktemp("corpus"), version=3):  # v3 holds every document
         for page in load_pdf(path):
             out[(path.name, page["page"])] = normalize(page["text"])
     return out
@@ -37,13 +37,14 @@ def test_ids_are_unique():
 
 def test_every_category_is_covered():
     categories = {q["category"] for q in QUESTIONS}
-    assert categories == {"direct", "numerical", "multi_document", "multi_section", "unanswerable", "adversarial"}
+    assert categories == {"direct", "numerical", "multi_document", "multi_section", "unanswerable", "adversarial",
+                          "year_trap", "metric_trap", "company_trap", "term_trap"}
 
 
 @pytest.mark.parametrize("q", [q for q in QUESTIONS if q["evidence"]], ids=lambda q: q["id"])
 def test_evidence_phrase_is_on_the_stated_page(q, page_text):
     for ev in q["evidence"]:
-        assert ev["doc"] in DOCUMENTS
+        assert ev["doc"] in documents(q.get("min_corpus", 1))
         assert normalize(ev["phrase"]) in page_text[(ev["doc"], ev["page"])], ev
 
 

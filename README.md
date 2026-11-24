@@ -8,7 +8,7 @@ A local RAG (retrieval-augmented generation) app: upload PDFs, ask questions in 
 2. **Chunk** — text is split into ~150-word chunks along paragraph boundaries, keeping table rows and headings with their text (strategies and settings: `docs/chunking.md`).
 3. **Embed** — each chunk is embedded locally with `all-MiniLM-L6-v2` (`sentence-transformers`) — no API call, no cost.
 4. **Store** — vectors and metadata are saved to disk as a `.npy` file + JSON (`rag/vector_store.py`), with simple cosine-similarity search. No external vector database.
-5. **Ask** — the top chunks are found by **hybrid search**: semantic search (meaning) and BM25 keyword search (exact words, names, numbers), merged with Reciprocal Rank Fusion (`docs/search_modes.md`). They are sent to Claude (`claude-sonnet-5-5`) along with the question and recent conversation history. Claude is instructed to answer only from the provided excerpts and cite document + page.
+5. **Ask** — 20 candidate chunks are found by **hybrid search**: semantic search (meaning) and BM25 keyword search (exact words, names, numbers), merged with Reciprocal Rank Fusion (`docs/search_modes.md`). A local **reranker** (cross-encoder) then re-reads each candidate next to the question and keeps the best 5. If it fails, the search order is used and the answer says so. The 5 chunks are sent to Claude (`claude-sonnet-5-5`) along with the question and recent conversation history. Claude is instructed to answer only from the provided excerpts and cite document + page.
 6. **Follow-ups** — a question like "what about the prior year?" is first rewritten into a standalone question (via Claude Haiku) before retrieval, since the original wording shares no words with the document.
 
 ## Setup
@@ -35,6 +35,7 @@ rag/
   embeddings.py             Local embedding model (sentence-transformers)
   vector_store.py           Disk-backed vector store, cosine similarity search
   retriever.py               Search modes (semantic / bm25 / hybrid) + RRF fusion
+  reranker.py                Local cross-encoder reranking, with safe fallback
   query_rewriter.py          Condenses follow-up questions before retrieval
   answer_generator.py       Builds the prompt, calls Claude, extracts the answer
 security/
@@ -57,9 +58,14 @@ Retrieval benchmark (synthetic PDFs, temp index, no API cost):
 .venv\Scripts\python -m evaluation.evaluation_runner           # current settings
 .venv\Scripts\python -m evaluation.evaluation_runner --modes   # compare search modes
 .venv\Scripts\python -m evaluation.evaluation_runner --sweep   # compare chunk settings
+.venv\Scripts\python -m evaluation.evaluation_runner --rerank-compare  # reranking on/off, corpus v3
 ```
+
+Architecture overview: `docs/architecture.md`.
 
 ## Notes
 
 - Document data (`data/`) and secrets (`.env`) never leave your machine except for the question + retrieved excerpts sent to the Claude API per query.
+- **Search settings** (sidebar): search method, reranking on/off, how many candidates to rerank and how many excerpts to send to Claude. They apply to the next question, with no re-index. Each answer has an optional **Evidence details** panel showing the method, how ranks moved, and timings.
+- The reranker model (`cross-encoder/ms-marco-MiniLM-L6-v2`, Apache-2.0, ~90 MB) downloads once on first use, pinned to one version. After that it runs offline. Reranking adds about 1 second per question; benchmark in `docs/phase4_reranking_report.md`.
 - The index records which model and chunk settings built it (`data/chroma_db/manifest.json`). After a settings change, or the first time you run this version, the app shows **Re-index documents**: one click rebuilds the index from the PDFs already stored, without re-uploading or deleting anything. Benchmark behind the default settings: `docs/phase2_chunking_report.md`.
