@@ -32,7 +32,7 @@ from rag.text_chunker import chunk_document
 from rag.embeddings import embed_texts
 from rag import vector_store
 from rag import document_registry
-from rag.retriever import retrieve
+from rag.retriever import retrieve_with_info
 from rag.answer_generator import MAX_HISTORY_TURNS, generate_answer
 from security.pdf_validator import (
     PDFValidationError,
@@ -285,6 +285,23 @@ with st.sidebar:
     else:
         st.info("No documents loaded yet. Upload a PDF above.")
 
+    # Search settings: apply to the next question, no re-index needed.
+    # Defaults come from rag/settings.py (chosen by the Phase 3 and 4 benchmarks).
+    with st.expander("🔎 Search settings"):
+        st.selectbox(
+            "Search method", settings.SEARCH_MODES, key="search_mode",
+            index=settings.SEARCH_MODES.index(settings.SEARCH_MODE),
+            format_func={"semantic": "Semantic (meaning)", "bm25": "Keyword (BM25)",
+                         "hybrid": "Hybrid (both, fused)"}.get,
+        )
+        st.toggle("Rerank results", value=settings.RERANK_ENABLED, key="rerank",
+                  help="A local AI model re-reads the top candidates next to your question and keeps the best. "
+                       "About 1 second slower; nothing leaves your computer.")
+        st.slider("Candidates to rerank", 5, 50, settings.RERANK_CANDIDATES, key="candidates",
+                  disabled=not st.session_state.get("rerank", settings.RERANK_ENABLED))
+        st.slider("Excerpts sent to Claude", 1, 10, settings.FINAL_K, key="final_k",
+                  help="More excerpts = more context for Claude, and a slightly higher API cost per question.")
+
     st.divider()
     st.caption(f"Total chunks stored: {vector_store.total_chunks()}")
 
@@ -304,17 +321,56 @@ if "pending_personal" not in st.session_state:
     st.session_state.pending_personal = None
 
 
-def _show_answer(result: dict, used_privacy: list[str]) -> None:
+METHOD_NAMES = {"semantic": "semantic search", "bm25": "keyword search (BM25)", "hybrid": "hybrid search"}
+
+
+def _evidence(chunks: list[dict], info: dict | None) -> dict | None:
+    """What the Evidence details panel shows: ranks, documents, pages, scores, timings. No chunk text."""
+    if not info:
+        return None
+    return {"info": info, "rows": [
+        {"final": c["final_rank"], "original": c["original_rank"], "doc_name": c["doc_name"],
+         "pages": c.get("pages") or [c["page"]], "score": c.get("rerank_score")}
+        for c in chunks
+    ]}
+
+
+def _render_extras(sources: list[dict], evidence: dict | None) -> None:
+    """Sources, a fallback notice, and optional Evidence details under an answer."""
+    if evidence and evidence["info"]["rerank_fallback"]:
+        st.caption(f"⚠️ Reranking unavailable ({evidence['info']['rerank_fallback']}); "
+                   "used the search order instead.")
+    if sources:
+        with st.expander("📌 Sources"):
+            for s in sources:
+                st.markdown(render_answer(f"• **{s['doc_name']}** — page {s['page']}"))
+    if evidence:
+        info = evidence["info"]
+        with st.expander("🔍 Evidence details"):
+            method = METHOD_NAMES[info["mode"]] + (" + reranking" if info["reranked"] else "")
+            timing = f"search {info['retrieval_ms']:.0f} ms"
+            if info["reranked"] or info["rerank_fallback"]:
+                timing += f" · reranking {info['rerank_ms']:.0f} ms ({info['candidates']} candidates)"
+            st.caption(f"Found with **{method}** · {timing}")
+            for r in evidence["rows"]:
+                pages = "–".join(str(p) for p in (r["pages"][0], r["pages"][-1])) if len(r["pages"]) > 1 else r["pages"][0]
+                moved = f" (search rank #{r['original']})" if r["original"] != r["final"] else ""
+                score = f" · relevance score {r['score']:.2f}" if r["score"] is not None else ""
+                st.markdown(render_answer(f"**#{r['final']}**{moved} · {r['doc_name']} — page {pages}{score}"))
+            if info["reranked"]:
+                st.caption("Relevance scores compare excerpts with each other; they are not a chance of being correct.")
+
+
+def _show_answer(result: dict, used_privacy: list[str], evidence: dict | None = None) -> None:
     with st.chat_message("assistant"):
         st.markdown(render_answer(result["answer"]))
-        if result["sources"]:
-            with st.expander("📌 Sources"):
-                for s in result["sources"]:
-                    st.write(f"• **{s['doc_name']}** — page {s['page']}")
+        _render_extras(result.get("sources", []), evidence)
     st.session_state.messages.append({
         "role": "assistant",
         "content": result["answer"],
         "sources": result.get("sources", []),
+        # Shown again on redraw; never sent to Claude (history is role + content only).
+        "evidence": evidence,
         # Remembered so a later call that resends this answer as history is
         # gated the same way as the documents it came from.
         "used_privacy": used_privacy,
@@ -325,10 +381,7 @@ def _show_answer(result: dict, used_privacy: list[str]) -> None:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(render_answer(msg["content"]))
-        if msg.get("sources"):
-            with st.expander("📌 Sources"):
-                for s in msg["sources"]:
-                    st.write(f"• **{s['doc_name']}** — page {s['page']}")
+        _render_extras(msg.get("sources", []), msg.get("evidence"))
 
 # Approval gate: a Personal-classified answer is waiting on a yes/no click.
 # Rendered before the chat input so it takes priority over asking a new question.
@@ -357,7 +410,7 @@ if st.session_state.pending_personal is not None:
         # Tagged personal even if only the history was: this answer was built
         # with Personal content in its context.
         used = sorted(set(privacy_levels_of(pending["chunks"])) | {"personal"})
-        _show_answer(result, used)
+        _show_answer(result, used, pending.get("evidence"))
         st.session_state.pending_personal = None
         st.rerun()
     elif cancel:
@@ -383,7 +436,16 @@ elif question := st.chat_input("Ask a question about your documents…"):
             st.markdown(render_answer(question))
 
         with st.spinner("Searching documents…"):
-            chunks = retrieve(question, top_k=5, history=history)
+            rerank = st.session_state.get("rerank", settings.RERANK_ENABLED)
+            chunks, info = retrieve_with_info(
+                question,
+                top_k=st.session_state.get("final_k", settings.FINAL_K),
+                history=history,
+                mode=st.session_state.get("search_mode", settings.SEARCH_MODE),
+                rerank=rerank,
+                candidates=st.session_state.get("candidates", settings.RERANK_CANDIDATES),
+            )
+        evidence = _evidence(chunks, info)
 
         # Only the turns that will actually be resent (see trim_history).
         if needs_approval(chunks, history[-MAX_HISTORY_TURNS:]):
@@ -393,12 +455,13 @@ elif question := st.chat_input("Ask a question about your documents…"):
                 "question": question,
                 "chunks": chunks,
                 "history": history,
+                "evidence": evidence,
             }
             st.rerun()
         else:
             with st.spinner("Generating answer…"):
                 result = generate_answer(question, chunks, history=history)
-            _show_answer(result, privacy_levels_of(chunks))
+            _show_answer(result, privacy_levels_of(chunks), evidence)
 
 # Clear chat button
 if st.session_state.messages:
