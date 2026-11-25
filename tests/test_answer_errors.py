@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from rag import answer_generator
 
 REQUEST = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-CHUNKS = [{"text": "Revenue grew 12.1%.", "doc_name": "a.pdf", "page": 1}]
 
 
 def _status(cls, code):
@@ -42,11 +41,12 @@ def _client_raising(error):
     (_status(anthropic.InternalServerError, 500), "having problems"),
     (_status(anthropic.NotFoundError, 404), "request to the Claude API failed"),
 ], ids=["connection", "timeout", "auth", "rate-limit", "server", "other"])
-def test_api_errors_return_a_safe_message(monkeypatch, error, expected):
+def test_api_errors_return_a_safe_message(monkeypatch, index_doc, error, expected):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
     monkeypatch.setattr(answer_generator.anthropic, "Anthropic", _client_raising(error))
+    chunks = index_doc("a", ["Revenue grew 12.1%."])
 
-    result = answer_generator.generate_answer("What was revenue growth?", CHUNKS)
+    result = answer_generator.generate_answer("What was revenue growth?", chunks)
 
     assert expected in result["answer"]
     assert result["sources"] == []

@@ -31,12 +31,17 @@ class FakeClaude:
 
     def create(self, **kwargs):
         calls.append(kwargs["model"])
-        text = "Answer from the excerpts.\nUSED_EXCERPTS: 1"
-        return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)], stop_reason="end_turn")
+        content = kwargs["messages"][-1]["content"]
+        if isinstance(content, str):  # the follow-up rewriter: echo a standalone question
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="What was revenue?")], stop_reason="end_turn")
+        quote = content[0]["source"]["data"]
+        block = SimpleNamespace(type="text", text="Answer from the excerpts.",
+                                citations=[{"document_index": 0, "cited_text": quote}])
+        return SimpleNamespace(content=[block], stop_reason="end_turn")
 
 
 def answer_calls() -> int:
-    """Calls to the answer model only (the follow-up rewriter is a separate, allowed call)."""
+    """Calls to the answer model only."""
     return calls.count(answer_generator.MODEL)
 
 
@@ -110,6 +115,19 @@ def test_follow_up_resending_a_personal_answer_asks_again():
     _ask(at, "And what was revenue?")
     assert _prompt_showing(at)
     assert answer_calls() == 0
+    assert calls == [], "not even the follow-up rewriter may call Claude before approval"
+
+
+def test_follow_ups_in_a_public_conversation_still_get_rewritten():
+    _add_doc("report", "public")
+    at = _new_app()
+    at.session_state["messages"] = [
+        {"role": "user", "content": "What was revenue?"},
+        {"role": "assistant", "content": "Revenue was 412.6.", "sources": [], "used_privacy": ["public"]},
+    ]
+    at.run()
+    at.chat_input[0].set_value("And the year before?").run()
+    assert len(calls) == 2 and calls[-1] == answer_generator.MODEL, "rewriter, then the answer"
 
 
 def test_public_only_question_is_answered_without_a_prompt():
