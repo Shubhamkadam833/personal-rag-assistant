@@ -34,6 +34,7 @@ from rag import vector_store
 from rag import document_registry
 from rag.retriever import retrieve_with_info
 from rag.answer_generator import MAX_HISTORY_TURNS, generate_answer
+from rag.citation_check import REASONS, problems
 from security.pdf_validator import (
     PDFValidationError,
     safe_display_name,
@@ -335,15 +336,36 @@ def _evidence(chunks: list[dict], info: dict | None) -> dict | None:
     ]}
 
 
-def _render_extras(sources: list[dict], evidence: dict | None) -> None:
-    """Sources, a fallback notice, and optional Evidence details under an answer."""
+def _pages(pages: list[int]) -> str:
+    return f"pages {pages[0]}–{pages[-1]}" if len(pages) > 1 else f"page {pages[0]}"
+
+
+def _render_check(check: dict | None) -> None:
+    """One line saying whether every statement is backed by a quoted passage (see rag/citation_check.py)."""
+    if not check or check["status"] not in ("verified", "partial"):
+        return
+    failing = problems(check["claims"])
+    if not failing:
+        backed = sum(c["status"] == "supported" for c in check["claims"])
+        st.caption(f"✅ Answer check: all {backed} statement(s) with facts are backed by a quoted passage.")
+        return
+    lines = [f"⚠️ **Answer check:** {len(failing)} statement(s) couldn't be confirmed from your documents:"]
+    lines += [f"- “{c['text']}” — {REASONS[c['status']]}" for c in failing]
+    st.warning(render_answer("\n".join(lines)))
+
+
+def _render_extras(sources: list[dict], evidence: dict | None, check: dict | None = None) -> None:
+    """Answer check, sources with their quotes, a fallback notice, and optional Evidence details under an answer."""
+    _render_check(check)
     if evidence and evidence["info"]["rerank_fallback"]:
         st.caption(f"⚠️ Reranking unavailable ({evidence['info']['rerank_fallback']}); "
                    "used the search order instead.")
     if sources:
         with st.expander("📌 Sources"):
             for s in sources:
-                st.markdown(render_answer(f"• **{s['doc_name']}** — page {s['page']}"))
+                st.markdown(render_answer(f"**[{s['n']}] {s['doc_name']}** — {_pages(s['pages'])}"))
+                for quote in s["quotes"]:
+                    st.markdown(render_answer(f"> {quote}"))
     if evidence:
         info = evidence["info"]
         with st.expander("🔍 Evidence details"):
@@ -353,10 +375,9 @@ def _render_extras(sources: list[dict], evidence: dict | None) -> None:
                 timing += f" · reranking {info['rerank_ms']:.0f} ms ({info['candidates']} candidates)"
             st.caption(f"Found with **{method}** · {timing}")
             for r in evidence["rows"]:
-                pages = "–".join(str(p) for p in (r["pages"][0], r["pages"][-1])) if len(r["pages"]) > 1 else r["pages"][0]
                 moved = f" (search rank #{r['original']})" if r["original"] != r["final"] else ""
                 score = f" · relevance score {r['score']:.2f}" if r["score"] is not None else ""
-                st.markdown(render_answer(f"**#{r['final']}**{moved} · {r['doc_name']} — page {pages}{score}"))
+                st.markdown(render_answer(f"**#{r['final']}**{moved} · {r['doc_name']} — {_pages(r['pages'])}{score}"))
             if info["reranked"]:
                 st.caption("Relevance scores compare excerpts with each other; they are not a chance of being correct.")
 
@@ -364,13 +385,14 @@ def _render_extras(sources: list[dict], evidence: dict | None) -> None:
 def _show_answer(result: dict, used_privacy: list[str], evidence: dict | None = None) -> None:
     with st.chat_message("assistant"):
         st.markdown(render_answer(result["answer"]))
-        _render_extras(result.get("sources", []), evidence)
+        _render_extras(result.get("sources", []), evidence, result.get("check"))
     st.session_state.messages.append({
         "role": "assistant",
         "content": result["answer"],
         "sources": result.get("sources", []),
         # Shown again on redraw; never sent to Claude (history is role + content only).
         "evidence": evidence,
+        "check": result.get("check"),
         # Remembered so a later call that resends this answer as history is
         # gated the same way as the documents it came from.
         "used_privacy": used_privacy,
@@ -381,7 +403,7 @@ def _show_answer(result: dict, used_privacy: list[str], evidence: dict | None = 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(render_answer(msg["content"]))
-        _render_extras(msg.get("sources", []), msg.get("evidence"))
+        _render_extras(msg.get("sources", []), msg.get("evidence"), msg.get("check"))
 
 # Approval gate: a Personal-classified answer is waiting on a yes/no click.
 # Rendered before the chat input so it takes priority over asking a new question.
@@ -440,7 +462,10 @@ elif question := st.chat_input("Ask a question about your documents…"):
             chunks, info = retrieve_with_info(
                 question,
                 top_k=st.session_state.get("final_k", settings.FINAL_K),
-                history=history,
+                # The follow-up rewriter is a Claude call that runs before any
+                # approval prompt. Once the conversation holds a Personal
+                # answer, skip it and search with the question as typed.
+                history=None if needs_approval([], history[-MAX_HISTORY_TURNS:]) else history,
                 mode=st.session_state.get("search_mode", settings.SEARCH_MODE),
                 rerank=rerank,
                 candidates=st.session_state.get("candidates", settings.RERANK_CANDIDATES),

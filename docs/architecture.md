@@ -19,7 +19,8 @@ PDF ──► validate ──► extract text ──► chunk ──► clean �
 ```
 question
    │
-   ├─ follow-up? ─► rewrite to stand alone ............ Claude Haiku (privacy-gated)
+   ├─ follow-up? ─► rewrite to stand alone ............ Claude Haiku
+   │               (skipped once the chat holds a Personal answer: no Claude call before approval)
    │
    ▼
 privacy filter: only Public + Personal documents ......... retriever.py
@@ -38,10 +39,19 @@ rerank: local cross-encoder re-reads each candidate ....... reranker.py         
 Personal excerpts? ─► ask the user before sending ......... app.py + privacy_gate.py
    │
    ▼
-answer from the excerpts only, with citations ............. Claude Sonnet (answer_generator.py)
-   │
+re-check each excerpt against the live index .............. citation_check.current_chunks
+   │    (deleted, changed or now-Restricted documents are dropped, never sent)
    ▼
-answer + sources + optional Evidence details (method, rank changes, timings)
+answer with built-in citations: each sentence ............. Claude Sonnet (answer_generator.py)
+   │    comes back with the exact passage it relied on
+   ▼
+check every citation and figure ........................... citation_check.py
+   │    valid?     the quote is really inside an excerpt we sent
+   │    supported? every number in the sentence is in its quote
+   │    nothing backed ─► safe "couldn't verify" message instead of the answer
+   ▼
+answer with [n] markers + answer check + sources with quotes
+     + optional Evidence details (method, rank changes, timings)
 ```
 
 ## Where the settings live
@@ -68,3 +78,4 @@ answer + sources + optional Evidence details (method, rank changes, timings)
 | Hybrid search | Meaning + exact words: catches paraphrases *and* names, codes and years | `docs/phase3_hybrid_search_report.md` |
 | Reranking | A slower, closer read of the top 20 that puts the right year and company first | `docs/phase4_reranking_report.md` |
 | Privacy filter before ranking | Restricted text can never be ranked, reranked, shown or sent | `tests/test_retriever_privacy.py`, `tests/test_reranker.py` |
+| Citation checks | Every source shown is a real passage we sent, and figures must match their quote | `docs/phase5_grounded_answers_report.md`, `tests/test_citations.py` |

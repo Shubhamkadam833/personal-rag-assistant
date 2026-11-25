@@ -28,8 +28,12 @@ class FakeClaude:
 
     def create(self, **kwargs):
         sent_prompts.append(str(kwargs["messages"]))
-        text = "Operating income was 61.9.\nUSED_EXCERPTS: 1"
-        return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)], stop_reason="end_turn")
+        # Cite the excerpt that holds the figure, as the real citations API would.
+        docs = [b for b in kwargs["messages"][-1]["content"] if b["type"] == "document"]
+        index = next(i for i, d in enumerate(docs) if "61.9" in d["source"]["data"])
+        cite = {"document_index": index, "cited_text": docs[index]["source"]["data"]}
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text="Operating income was 61.9.", citations=[cite])],
+                               stop_reason="end_turn")
 
 
 class FakeReranker:

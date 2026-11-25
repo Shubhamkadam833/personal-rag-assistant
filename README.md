@@ -8,8 +8,9 @@ A local RAG (retrieval-augmented generation) app: upload PDFs, ask questions in 
 2. **Chunk** — text is split into ~150-word chunks along paragraph boundaries, keeping table rows and headings with their text (strategies and settings: `docs/chunking.md`).
 3. **Embed** — each chunk is embedded locally with `all-MiniLM-L6-v2` (`sentence-transformers`) — no API call, no cost.
 4. **Store** — vectors and metadata are saved to disk as a `.npy` file + JSON (`rag/vector_store.py`), with simple cosine-similarity search. No external vector database.
-5. **Ask** — 20 candidate chunks are found by **hybrid search**: semantic search (meaning) and BM25 keyword search (exact words, names, numbers), merged with Reciprocal Rank Fusion (`docs/search_modes.md`). A local **reranker** (cross-encoder) then re-reads each candidate next to the question and keeps the best 5. If it fails, the search order is used and the answer says so. The 5 chunks are sent to Claude (`claude-sonnet-5-5`) along with the question and recent conversation history. Claude is instructed to answer only from the provided excerpts and cite document + page.
-6. **Follow-ups** — a question like "what about the prior year?" is first rewritten into a standalone question (via Claude Haiku) before retrieval, since the original wording shares no words with the document.
+5. **Ask** — 20 candidate chunks are found by **hybrid search**: semantic search (meaning) and BM25 keyword search (exact words, names, numbers), merged with Reciprocal Rank Fusion (`docs/search_modes.md`). A local **reranker** (cross-encoder) then re-reads each candidate next to the question and keeps the best 5. If it fails, the search order is used and the answer says so. The 5 chunks are sent to Claude (`claude-sonnet-5-5`) along with the question and recent conversation history, each as a document with **citations** turned on.
+6. **Check** — every sentence of the answer comes back with the exact passage it relied on. The app checks in code that each quote really comes from an excerpt it sent, and that every figure in a sentence appears in its quote. Answers show `[1]`-style markers, a one-line **answer check**, and the quoted passages under **Sources**. If nothing in the answer can be backed by a quote, a "couldn't verify" message is shown instead (`rag/citation_check.py`, `docs/phase5_grounded_answers_report.md`).
+7. **Follow-ups** — a question like "what about the prior year?" is first rewritten into a standalone question (via Claude Haiku) before retrieval, since the original wording shares no words with the document. Once the conversation includes an answer from a Personal document, rewriting is skipped, so no Claude call happens before you approve.
 
 ## Setup
 
@@ -37,7 +38,8 @@ rag/
   retriever.py               Search modes (semantic / bm25 / hybrid) + RRF fusion
   reranker.py                Local cross-encoder reranking, with safe fallback
   query_rewriter.py          Condenses follow-up questions before retrieval
-  answer_generator.py       Builds the prompt, calls Claude, extracts the answer
+  answer_generator.py       Sends excerpts to Claude with citations on; builds the shown answer and sources
+  citation_check.py          Re-checks excerpts before sending; checks every citation and figure after
 security/
   pdf_validator.py          Upload validation: size, pages, signature, encryption
 tests/                     pytest suite covering the above
@@ -59,6 +61,13 @@ Retrieval benchmark (synthetic PDFs, temp index, no API cost):
 .venv\Scripts\python -m evaluation.evaluation_runner --modes   # compare search modes
 .venv\Scripts\python -m evaluation.evaluation_runner --sweep   # compare chunk settings
 .venv\Scripts\python -m evaluation.evaluation_runner --rerank-compare  # reranking on/off, corpus v3
+```
+
+Answer benchmark (20 hand-checked questions; **calls the Claude API, about $0.30 per run**: Sonnet answers, an Opus judge grades them):
+
+```powershell
+.venv\Scripts\python -m evaluation.answer_eval --name my_run
+.venv\Scripts\python -m evaluation.answer_eval --name quick --ids F01 M01   # a few questions, a few cents
 ```
 
 Architecture overview: `docs/architecture.md`.
