@@ -17,7 +17,7 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-CORPUS_VERSION = "3"
+CORPUS_VERSION = "4"
 _CSS = "* {font-family: sans-serif; font-size: 10pt;} h3 {font-size: 13pt; font-weight: bold; margin: 6pt 0 2pt 0;}"
 
 _FILLER = [
@@ -181,9 +181,36 @@ TRAP_DOCUMENTS: dict[str, list[str]] = {
 }
 
 
+# Version 4 adds documents that DISAGREE with earlier ones, for the Phase 5
+# answer benchmark: a restatement (a later figure replaces an earlier one), a
+# press release that contradicts the annual report, and a newer policy
+# version. A grounded answer should surface the disagreement, not silently
+# pick one figure.
+CONFLICT_DOCUMENTS: dict[str, list[str]] = {
+    "northwind_robotics_2024_restatement.pdf": _report("Northwind Robotics", [
+        "Northwind Robotics Restatement Notice - Fiscal Year 2024\n\n"
+        "Restatement. Northwind Robotics restated its fiscal year 2024 net income to "
+        "$41.8 million, from the $44.3 million previously reported, after correcting "
+        "a warranty provision.",
+    ]),
+    "cobalt_harbor_2024_press_release.pdf": _report("Cobalt Harbor Logistics", [
+        "Cobalt Harbor Logistics Press Release - Fiscal Year 2024 Results\n\n"
+        "Workforce. Cobalt Harbor Logistics had 4,350 employees at the end of fiscal "
+        "year 2024, according to this press release.",
+    ]),
+    "expense_policy_v4.pdf": _report("the company", [
+        "Travel and Expense Policy - Version 4\n\n"
+        "Purpose. This version replaces Version 3 of the travel and expense policy.",
+        "Travel. Economy class is required for flights under six hours. The hotel limit "
+        "is $250 per night in tier-one cities.",
+    ]),
+}
+
+
 def documents(version: int) -> dict[str, list[str]]:
-    """The documents in a corpus version: v3 = v1/v2 documents + trap documents."""
-    return {**DOCUMENTS, **TRAP_DOCUMENTS} if version >= 3 else DOCUMENTS
+    """The documents in a corpus version: v3 = v1/v2 documents + traps; v4 = v3 + conflicts."""
+    docs = {**DOCUMENTS, **TRAP_DOCUMENTS} if version >= 3 else dict(DOCUMENTS)
+    return {**docs, **CONFLICT_DOCUMENTS} if version >= 4 else docs
 
 
 def _html(text: str) -> str:
@@ -213,6 +240,7 @@ def build_corpus(out_dir: Path, version: int = 2) -> list[Path]:
     Version 2 has the same words on the same pages, with headings in bold 13pt,
     so heading-aware chunking can be measured.
     Version 3 is version 2 plus the trap documents (same layout).
+    Version 4 is version 3 plus the conflicting documents.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = []
